@@ -105,7 +105,16 @@ function normaliseScheme(raw: string): string {
 
 // ── Main builder ───────────────────────────────────────────────────────────────
 
-export function buildCMAReportInput(formData: GTABFormData): object {
+export interface CMAReportCustomization {
+  frontPageColor: "Navy" | "Teal" | "Royal Blue" | "Burgundy" | "Forest Green" | "Charcoal";
+  preparedBy: string;
+  bankName?: string;
+}
+
+export function buildCMAReportInput(
+  formData: GTABFormData,
+  customization?: CMAReportCustomization,
+): object {
   const ri             = getNormalizedProjectReportInputs(formData);
   const machineryTotal = getProjectReportMachineryTotal(formData);
   const dpr            = ri.dpr;
@@ -189,6 +198,8 @@ export function buildCMAReportInput(formData: GTABFormData): object {
 
   // ── Assemble payload ──────────────────────────────────────────────────────
   return {
+    prepared_by: customization?.preparedBy ?? "EasyBizy",
+    report_theme: customization?.frontPageColor ?? "Navy",
     scheme: normaliseScheme(formData.loan_scheme),
 
     applicant: {
@@ -230,7 +241,7 @@ export function buildCMAReportInput(formData: GTABFormData): object {
       is_second_loan:           formData.is_second_loan ?? false,
       gst_number:               ri.business.gst_number  || '',
       msme_number:              ri.business.msme_number || '',
-      bank_name:                ri.loan.bank_name      || '',
+      bank_name:                ri.loan.bank_name || '',
       business_duration_months: Number(formData.business_duration_months || 0),
       existing_annual_turnover: formData.business_type === 'existing_business' ? Number(formData.existing_annual_turnover || 0) : 0,
       existing_annual_profit:   formData.business_type === 'existing_business' ? Number(formData.existing_annual_profit || 0) : 0,
@@ -245,6 +256,8 @@ export function buildCMAReportInput(formData: GTABFormData): object {
       guarantor_relation:    ri.loan.guarantor_relation || '',
       processing_fee_pct:    Number(ri.loan.processing_fee_pct || 0),
     },
+
+    to_bank: customization?.bankName || '',
 
     project: {
       land_cost:            Number(formData.land_cost                  || 0),

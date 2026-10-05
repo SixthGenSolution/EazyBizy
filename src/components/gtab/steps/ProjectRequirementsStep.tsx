@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Plus, Trash2, Wrench, Building, Package, Calculator, IndianRupee, Lightbulb, TrendingUp } from "lucide-react";
+import { Plus, Trash2, Wrench, Building, Calculator, IndianRupee, Lightbulb, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -13,6 +13,7 @@ import { getFinancingPlan } from "@/lib/projectReport";
 import { numberToWords } from "@/lib/numberToWords";
 import { CASuggestionTip } from "@/components/gtab/CASuggestionTip";
 import { adviseProjectCostCeiling, adviseLandBuildingShare, advisePromoterMargin } from "@/lib/caAdvisory";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 // ── Format helpers ─────────────────────────────────────────────────────────────
 const fmt = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
@@ -35,18 +36,6 @@ interface ProjectRequirementsStepProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const CurrencyInput = ({
   label,
@@ -83,8 +72,55 @@ const CurrencyInput = ({
   );
 };
 
-const itemCost = (m: MachineryItem) => Number(m.cost) || Number(m.quantity || 1) * Number(m.unit_cost || 0);
+const itemCost = (m: MachineryItem) => {
+  if (m.machine_cost !== undefined || m.installation_cost !== undefined || m.other_capital_cost !== undefined) {
+    return Number(m.machine_cost ?? (Number(m.quantity || 1) * Number(m.unit_cost || 0)))
+      + Number(m.installation_cost || 0)
+      + Number(m.other_capital_cost || 0);
+  }
+  if (m.total_cost !== undefined) return Number(m.total_cost) || 0;
+  return Number(m.cost) || Number(m.quantity || 1) * Number(m.unit_cost || 0);
+};
 const sumItems = (items: MachineryItem[]) => (items || []).reduce((s, m) => s + itemCost(m), 0);
+
+const CostBreakdownFields = ({
+  machineCost,
+  installationCost,
+  otherCapitalCost,
+  totalCost,
+  onChange,
+}: {
+  machineCost: number;
+  installationCost: number;
+  otherCapitalCost: number;
+  totalCost: number;
+  onChange: (field: "machine_cost" | "installation_cost" | "other_capital_cost", value: number) => void;
+}) => (
+  <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]">
+    <div className="space-y-1.5">
+      <Label>Machine Cost (₹) *</Label>
+      <Input type="number" className="h-11 rounded-xl" value={machineCost || ""} min={0}
+        onChange={(e) => onChange("machine_cost", Number(e.target.value) || 0)} />
+    </div>
+    <span className="hidden pb-3 text-lg md:block">+</span>
+    <div className="space-y-1.5">
+      <Label>Installation Cost (₹) *</Label>
+      <Input type="number" className="h-11 rounded-xl" value={installationCost || ""} min={0}
+        onChange={(e) => onChange("installation_cost", Number(e.target.value) || 0)} />
+    </div>
+    <span className="hidden pb-3 text-lg md:block">+</span>
+    <div className="space-y-1.5">
+      <Label>Other Capital Cost (₹) *</Label>
+      <Input type="number" className="h-11 rounded-xl" value={otherCapitalCost || ""} min={0}
+        onChange={(e) => onChange("other_capital_cost", Number(e.target.value) || 0)} />
+    </div>
+    <span className="hidden pb-3 text-lg md:block">=</span>
+    <div className="space-y-1.5">
+      <Label>Total Cost (₹)</Label>
+      <Input type="number" className="h-11 rounded-xl bg-muted" value={totalCost || ""} readOnly />
+    </div>
+  </div>
+);
 
 /** Itemized "add as many as you need" list — name, qty, unit price, purchase date, supplier per row. */
 const CostItemList = ({
@@ -104,11 +140,23 @@ const CostItemList = ({
     const newId = crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
     onChange([
       ...items,
-      { id: newId, machine_name: "", cost: 0, quantity: 1, unit_cost: 0, purchase_date: "", supplier_name: "", supplier_city: "", supplier_phone: "", supplier_email: "" },
+      { id: newId, machine_name: "", cost: 0, machine_cost: 0, installation_cost: 0, other_capital_cost: 0, total_cost: 0, quantity: 1, unit_cost: 0, purchase_date: "", supplier_name: "", supplier_city: "", supplier_phone: "", supplier_email: "" },
     ]);
   };
   const updateItem = (id: string, updates: Partial<MachineryItem>) => {
     onChange(items.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+  };
+  const updateBreakdown = (id: string, field: "machine_cost" | "installation_cost" | "other_capital_cost", value: number) => {
+    onChange(items.map((item) => {
+      if (item.id !== id) return item;
+      const machineCost = field === "machine_cost"
+        ? value
+        : Number(item.machine_cost ?? (Number(item.quantity || 1) * Number(item.unit_cost || 0)));
+      const installationCost = field === "installation_cost" ? value : Number(item.installation_cost || 0);
+      const otherCapitalCost = field === "other_capital_cost" ? value : Number(item.other_capital_cost || 0);
+      const totalCost = machineCost + installationCost + otherCapitalCost;
+      return { ...item, [field]: value, total_cost: totalCost, cost: totalCost };
+    }));
   };
   const removeItem = (id: string) => {
     onChange(items.filter((item) => item.id !== id));
@@ -158,17 +206,21 @@ const CostItemList = ({
                 <Input type="number" className="h-11 rounded-xl" value={item.quantity || 1} min={1}
                   onChange={(e) => {
                     const qty = Number(e.target.value) || 1;
-                    const uc = Number(item.unit_cost || item.cost || 0);
-                    updateItem(item.id, { quantity: qty, unit_cost: uc, cost: qty * uc });
+                    const uc = Number(item.unit_cost || 0);
+                    const machineCost = qty * uc;
+                    const totalCost = machineCost + Number(item.installation_cost || 0) + Number(item.other_capital_cost || 0);
+                    updateItem(item.id, { quantity: qty, unit_cost: uc, machine_cost: machineCost, total_cost: totalCost, cost: totalCost });
                   }} />
               </div>
               <div className="space-y-1.5">
                 <Label>Unit Price (₹) *</Label>
-                <Input type="number" className="h-11 rounded-xl" value={item.unit_cost || item.cost || ""} placeholder="₹ 0"
+                <Input type="number" className="h-11 rounded-xl" value={item.unit_cost || ""} placeholder="₹ 0"
                   onChange={(e) => {
                     const uc = parseFloat(e.target.value) || 0;
                     const qty = item.quantity || 1;
-                    updateItem(item.id, { unit_cost: uc, cost: qty * uc });
+                    const machineCost = qty * uc;
+                    const totalCost = machineCost + Number(item.installation_cost || 0) + Number(item.other_capital_cost || 0);
+                    updateItem(item.id, { unit_cost: uc, machine_cost: machineCost, total_cost: totalCost, cost: totalCost });
                   }} />
               </div>
               <div className="space-y-1.5">
@@ -183,12 +235,23 @@ const CostItemList = ({
               </div>
             </div>
 
-            {cost > 0 && (
-              <div className="text-xs text-muted-foreground">
-                Total for this item: <strong>{fmt(cost)}</strong>
-                {Number(item.quantity || 1) > 1 ? ` (${item.quantity} × ${fmt(Number(item.unit_cost || 0))})` : ""}
-              </div>
-            )}
+            {cost > 0 && <div className="text-xs text-muted-foreground">Total for this item: <strong>{fmt(cost)}</strong></div>}
+
+            {(() => {
+              const machineCost = Number(item.machine_cost ?? (Number(item.quantity || 1) * Number(item.unit_cost || 0)));
+              const installationCost = Number(item.installation_cost || 0);
+              const otherCapitalCost = Number(item.other_capital_cost || 0);
+              const totalCost = machineCost + installationCost + otherCapitalCost;
+              return (
+                <CostBreakdownFields
+                  machineCost={machineCost}
+                  installationCost={installationCost}
+                  otherCapitalCost={otherCapitalCost}
+                  totalCost={totalCost}
+                  onChange={(field, value) => updateBreakdown(item.id, field, value)}
+                />
+              );
+            })()}
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <div className="space-y-1.5">
@@ -281,7 +344,7 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
     ? Math.max(totalProjectCost - promoterEquity - termLoanAmount - wcLoan, 0)
     : 0;
 
-  // ── Sync computed totals back to formData so Step 7 & 8 (and the backend
+  // ── Sync computed totals back to formData so Step 6 & 8 (and the backend
   // report pipeline, which reads these scalars directly) always have latest ──
   useEffect(() => {
     const updates: Partial<GTABFormData> = {};
@@ -304,7 +367,7 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
   const addMachineryItem = () => {
     const newId = crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
     const newItem: MachineryItem = {
-      id: newId, machine_name: "", cost: 0, quantity: 1, unit_cost: 0, purchase_date: "",
+      id: newId, machine_name: "", cost: 0, machine_cost: 0, installation_cost: 0, other_capital_cost: 0, total_cost: 0, quantity: 1, unit_cost: 0, purchase_date: "",
       supplier_name: "", supplier_city: "", supplier_phone: "", supplier_email: "",
     };
     updateFormData({ plant_machinery: [...(formData.plant_machinery || []), newItem] });
@@ -484,6 +547,10 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
                                   quantity: s.quantity,
                                   unit_cost: s.unit_cost,
                                   cost: s.quantity * s.unit_cost,
+                                  machine_cost: s.quantity * s.unit_cost,
+                                  installation_cost: 0,
+                                  other_capital_cost: 0,
+                                  total_cost: s.quantity * s.unit_cost,
                                   purchase_date: '',
                                   supplier_name: '',
                                   supplier_city: '',
@@ -510,13 +577,16 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
             })()}
 
             {(formData.plant_machinery || []).map((item, index) => {
-              const itemCost = Number(item.cost) || (Number(item.quantity || 1) * Number(item.unit_cost || 0));
+              const machineCost = Number(item.machine_cost ?? item.cost ?? (Number(item.quantity || 1) * Number(item.unit_cost || 0)));
+              const installationCost = Number(item.installation_cost || 0);
+              const otherCapitalCost = Number(item.other_capital_cost || 0);
+              const totalCost = machineCost + installationCost + otherCapitalCost;
               return (
                 <div key={item.id} className="rounded-xl border bg-card p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold">
                       Item #{index + 1}
-                      {itemCost > 0 && <span className="ml-2 text-xs font-normal text-muted-foreground">{fmt(itemCost)}</span>}
+                      {totalCost > 0 && <span className="ml-2 text-xs font-normal text-muted-foreground">{fmt(totalCost)}</span>}
                     </span>
                     <Button type="button" variant="ghost" size="sm" className="h-8 gap-1 text-destructive hover:bg-destructive/10 text-xs" onClick={() => removeMachineryItem(item.id)}>
                       <Trash2 className="w-3.5 h-3.5" /> Remove
@@ -537,7 +607,14 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
                         onChange={(e) => {
                           const qty = Number(e.target.value) || 1;
                           const uc = Number(item.unit_cost || item.cost || 0);
-                          updateMachineryItem(item.id, { quantity: qty, unit_cost: uc, cost: qty * uc });
+                          const nextMachineCost = qty * uc;
+                          updateMachineryItem(item.id, {
+                            quantity: qty,
+                            unit_cost: uc,
+                            machine_cost: nextMachineCost,
+                            total_cost: nextMachineCost + installationCost + otherCapitalCost,
+                            cost: nextMachineCost + installationCost + otherCapitalCost,
+                          });
                         }} />
                     </div>
                     <div className="space-y-1.5">
@@ -546,7 +623,13 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
                         onChange={(e) => {
                           const uc = parseFloat(e.target.value) || 0;
                           const qty = item.quantity || 1;
-                          updateMachineryItem(item.id, { unit_cost: uc, cost: qty * uc });
+                          const nextMachineCost = qty * uc;
+                          updateMachineryItem(item.id, {
+                            unit_cost: uc,
+                            machine_cost: nextMachineCost,
+                            total_cost: nextMachineCost + installationCost + otherCapitalCost,
+                            cost: nextMachineCost + installationCost + otherCapitalCost,
+                          });
                         }} />
                     </div>
                     <div className="space-y-1.5">
@@ -561,12 +644,51 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
                     </div>
                   </div>
                   {/* Auto-computed total shown when both qty and price entered */}
-                  {itemCost > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      Total for this item: <strong>{fmt(itemCost)}</strong>
-                      {Number(item.quantity || 1) > 1 ? ` (${item.quantity} × ${fmt(Number(item.unit_cost || 0))})` : ""}
+                  <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]">
+                    <div className="space-y-1.5">
+                      <Label>Machine Cost (₹) *</Label>
+                      <Input type="number" className="h-11 rounded-xl" value={machineCost || ""} min={0}
+                        onChange={(e) => {
+                          const nextMachineCost = Number(e.target.value) || 0;
+                          updateMachineryItem(item.id, {
+                            machine_cost: nextMachineCost,
+                            total_cost: nextMachineCost + installationCost + otherCapitalCost,
+                            cost: nextMachineCost + installationCost + otherCapitalCost,
+                          });
+                        }} />
                     </div>
-                  )}
+                    <span className="hidden pb-3 text-lg md:block">+</span>
+                    <div className="space-y-1.5">
+                      <Label>Installation Cost (₹) *</Label>
+                      <Input type="number" className="h-11 rounded-xl" value={installationCost || ""} min={0}
+                        onChange={(e) => {
+                          const nextInstallationCost = Number(e.target.value) || 0;
+                          updateMachineryItem(item.id, {
+                            installation_cost: nextInstallationCost,
+                            total_cost: machineCost + nextInstallationCost + otherCapitalCost,
+                            cost: machineCost + nextInstallationCost + otherCapitalCost,
+                          });
+                        }} />
+                    </div>
+                    <span className="hidden pb-3 text-lg md:block">+</span>
+                    <div className="space-y-1.5">
+                      <Label>Other Capital Cost (₹) *</Label>
+                      <Input type="number" className="h-11 rounded-xl" value={otherCapitalCost || ""} min={0}
+                        onChange={(e) => {
+                          const nextOtherCapitalCost = Number(e.target.value) || 0;
+                          updateMachineryItem(item.id, {
+                            other_capital_cost: nextOtherCapitalCost,
+                            total_cost: machineCost + installationCost + nextOtherCapitalCost,
+                            cost: machineCost + installationCost + nextOtherCapitalCost,
+                          });
+                        }} />
+                    </div>
+                    <span className="hidden pb-3 text-lg md:block">=</span>
+                    <div className="space-y-1.5">
+                      <Label>Total Cost (₹)</Label>
+                      <Input type="number" className="h-11 rounded-xl bg-muted" value={totalCost || ""} readOnly />
+                    </div>
+                  </div>
 
                   {/* Supplier details — bank requires these for items > ₹50K */}
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -603,12 +725,6 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
           <div className="border-t" />
 
           {/* ── Preliminary / Other Setup Expenses ─────────────────────────── */}
-          <SectionTitle
-            icon={Package}
-            title={isTrading ? "Furniture, Computers & Initial Stock" : isService ? "Computers, Software & Initial Setup" : isAgriculture ? "Tools, Irrigation & Initial Inputs" : "Preliminary & Other Capital Expenditure"}
-            subtitle="One-time setup costs that form part of Initial Project Investment. Add each item separately — bank verifies these against quotations."
-          />
-
           <div className="space-y-6">
             <div className="space-y-3">
               <p className="text-sm font-semibold">{isAgriculture ? "Equipment / Power Tools" : "Computers / Laptops / Printers"}</p>

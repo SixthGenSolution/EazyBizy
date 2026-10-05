@@ -50,6 +50,7 @@ from reportlab.platypus import (
     TableStyle, PageBreak, HRFlowable
 )
 from datetime import datetime
+from contextvars import ContextVar
 from core.engine import dscr_label, R, validate_cma_dpr
 from calculations.validator import structural_reconciliation, StructuralReconciliationError
 
@@ -100,6 +101,21 @@ BLK = colors.black
 DGR = colors.HexColor("#334155")
 MUTED = colors.HexColor("#64748B")
 
+_DEFAULT_REPORT_THEME = {"dark": DG, "accent": MG, "light": LG}
+_REPORT_THEMES = {
+    "Navy": {"dark": DG, "accent": MG, "light": LG},
+    "Teal": {"dark": colors.HexColor("#0F766E"), "accent": colors.HexColor("#0D9488"), "light": colors.HexColor("#CCFBF1")},
+    "Royal Blue": {"dark": colors.HexColor("#1D4ED8"), "accent": colors.HexColor("#2563EB"), "light": colors.HexColor("#DBEAFE")},
+    "Burgundy": {"dark": colors.HexColor("#6B1D36"), "accent": colors.HexColor("#7F1D3B"), "light": colors.HexColor("#FCE7EF")},
+    "Forest Green": {"dark": colors.HexColor("#14532D"), "accent": colors.HexColor("#166534"), "light": colors.HexColor("#DCFCE7")},
+    "Charcoal": {"dark": colors.HexColor("#1F2937"), "accent": colors.HexColor("#334155"), "light": colors.HexColor("#E2E8F0")},
+}
+_ACTIVE_REPORT_THEME: ContextVar[dict] = ContextVar("active_cma_report_theme", default=_DEFAULT_REPORT_THEME)
+
+
+def _theme_color(role: str):
+    return _ACTIVE_REPORT_THEME.get()[role]
+
 # ── Styles ────────────────────────────────────────────────────────────────────
 def _s(name, **kw): return ParagraphStyle(name, **kw)
 ST = {
@@ -121,6 +137,11 @@ ST = {
     # dark-grey body-text tone which would look inconsistent inside a table.
     "table_cell":   _s("tc", fontSize=8.5,textColor=BLK, leading=11, fontName="Helvetica"),
 }
+
+
+def _theme_style(name: str, color_role: str):
+    base_style = ST[name]
+    return ParagraphStyle(f"{base_style.name}_{color_role}", parent=base_style, textColor=_theme_color(color_role))
 
 # ── Format helpers ────────────────────────────────────────────────────────────
 def rs(v):
@@ -258,7 +279,7 @@ def _scheme_advisory(inp: dict, cma: dict) -> str:
 # ── Table style builders ──────────────────────────────────────────────────────
 def BTS(alt=True):
     cmds: list = [
-        ("BACKGROUND",     (0,0),(-1, 0), MG),
+        ("BACKGROUND",     (0,0),(-1, 0), _theme_color("accent")),
         ("TEXTCOLOR",      (0,0),(-1, 0), W),
         ("FONTNAME",       (0,0),(-1, 0), "Helvetica-Bold"),
         ("FONTSIZE",       (0,0),(-1,-1), 8),
@@ -276,7 +297,7 @@ def BTS(alt=True):
 def TOT(row):
     return TableStyle([
         ("FONTNAME",   (0,row),(-1,row), "Helvetica-Bold"),
-        ("BACKGROUND", (0,row),(-1,row), LG),
+        ("BACKGROUND", (0,row),(-1,row), _theme_color("light")),
     ])
 
 def RISK_COLOR(row, level):
@@ -291,7 +312,7 @@ def RISK_COLOR(row, level):
 def SEC(title, story):
     t = Table([[Paragraph(title, ST["h1"])]], colWidths=[170*mm])
     t.setStyle(TableStyle([
-        ("BACKGROUND",    (0,0),(-1,-1), MG),
+        ("BACKGROUND",    (0,0),(-1,-1), _theme_color("accent")),
         ("TOPPADDING",    (0,0),(-1,-1), 7),
         ("BOTTOMPADDING", (0,0),(-1,-1), 7),
         ("LEFTPADDING",   (0,0),(-1,-1), 8),
@@ -302,25 +323,25 @@ def SEC(title, story):
 def PB(story): story.append(PageBreak())
 
 def H2(text, story):
-    story.append(Paragraph(text, ST["h2"]))
+    story.append(Paragraph(text, _theme_style("h2", "dark")))
 
 def NL(story, h=4): story.append(Spacer(1, h))
 
 def _box(title, story):
     """A light boxed sub-heading — used for A/B/C style groupings within a section."""
-    t = Table([[Paragraph(title, ST["h2"])]], colWidths=[170*mm])
+    t = Table([[Paragraph(title, _theme_style("h2", "dark"))]], colWidths=[170*mm])
     t.setStyle(TableStyle([
-        ("BACKGROUND",    (0,0),(-1,-1), LG),
+        ("BACKGROUND",    (0,0),(-1,-1), _theme_color("light")),
         ("TOPPADDING",    (0,0),(-1,-1), 5),
         ("BOTTOMPADDING", (0,0),(-1,-1), 5),
         ("LEFTPADDING",   (0,0),(-1,-1), 8),
-        ("BOX",           (0,0),(-1,-1), 1.2, MG),
+        ("BOX",           (0,0),(-1,-1), 1.2, _theme_color("accent")),
     ]))
     story.append(t)
     NL(story, 2)
 
 # ── Main builder ──────────────────────────────────────────────────────────────
-def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
+def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     doc = SimpleDocTemplate(
         output_path, pagesize=A4,
         leftMargin=18*mm, rightMargin=18*mm,
@@ -389,6 +410,8 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     _nature_biz   = inp.get("nature_of_business", inp.get("business_description", ""))
     _promoter_name= f"{inp.get('title','').strip()} {inp.get('full_name', inp.get('entrepreneur_name',''))}".strip()
     _bank_name    = inp.get("bank_name", inp.get("preferred_bank", ""))
+    _to_bank      = str(inp.get("to_bank", "") or "").strip()
+    _prepared_by  = str(inp.get("prepared_by", "") or "").strip()
     ref_no = f"CMA/{_scheme_short}/{datetime.now().strftime('%Y%m')}/{str(abs(hash(inp.get('entrepreneur_name','X'))))[:6]}"
 
     # Single source of truth for "100%-capacity revenue" per year — it is NOT
@@ -425,11 +448,11 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     NL(story, int(15*mm))
     cover = Table([
         [Paragraph("Business Loan Feasibility Report", ST["cover_title"])],
-        [Paragraph("Indicative Financial Assessment Based on Applicant Inputs", ST["cover_sub"])],
+        [Paragraph("Indicative Financial Assessment Based on Applicant Inputs", _theme_style("cover_sub", "light"))],
         [Spacer(1, 6)],
-        [Paragraph(f"Scheme: {_scheme_short}", ST["cover_sub"])],
+        [Paragraph(f"Scheme: {_scheme_short}", _theme_style("cover_sub", "light"))],
         [Spacer(1, 4)],
-        [Paragraph(f"{_promoter_name}", ST["cover_sub"])],
+        [Paragraph(f"{_promoter_name}", _theme_style("cover_sub", "light"))],
         [Paragraph(f"{inp.get('business_name','')}", ST["cover_body"])],
         [Spacer(1, 4)],
         # BUG FIX: nature_of_business is free text and used to be silently
@@ -440,7 +463,7 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
         [Paragraph(f"{_industry_str} | {_nature_biz if _nature_biz else 'Business Activity'}", ST["cover_body"])],
     ], colWidths=[170*mm])
     cover.setStyle(TableStyle([
-        ("BACKGROUND",    (0,0),(-1,-1), DG),
+        ("BACKGROUND",    (0,0),(-1,-1), _theme_color("dark")),
         ("TOPPADDING",    (0,0),(-1,-1), 10),
         ("BOTTOMPADDING", (0,0),(-1,-1), 10),
     ]))
@@ -472,9 +495,18 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     else:
         scheme_note = "Standard MSME Term Loan | Collateral/Security: subject to bank credit policy"
 
-    scheme_banner = Table([[Paragraph(scheme_note, ST["small"])]], colWidths=[170*mm])
+    scheme_note_style = ParagraphStyle(
+        "scheme_notice",
+        parent=ST["small"],
+        fontName="Helvetica-Bold",
+        fontSize=8.5,
+        leading=12,
+        textColor=W,
+        alignment=TA_LEFT,
+    )
+    scheme_banner = Table([[Paragraph(scheme_note, scheme_note_style)]], colWidths=[170*mm])
     scheme_banner.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,-1), MG),("TEXTCOLOR",(0,0),(-1,-1), W),
+        ("BACKGROUND",(0,0),(-1,-1), _theme_color("accent")),("TEXTCOLOR",(0,0),(-1,-1), W),
         ("TOPPADDING",(0,0),(-1,-1), 5),("BOTTOMPADDING",(0,0),(-1,-1), 5),
         ("LEFTPADDING",(0,0),(-1,-1), 8),
     ]))
@@ -498,6 +530,8 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
         ["Working Capital Facility Requested", rs(R(cma.get("working_capital_loan", pc.get("wc_loan", 0)) or 0, 2))],
         ["Total Bank Exposure",  rs(display_loan_amount)],
         ["Promoter Contribution",rs(display_promoter_contribution)],
+        ["Prepared By",          _prepared_by or "—"],
+        ["To",                   _to_bank or "—"],
         ["Preferred Bank",       _bank_name or "As per applicant's choice"],
         ["Report Reference",     ref_no],
         ["Date Prepared",        datetime.now().strftime("%d %B %Y")],
@@ -573,7 +607,7 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     # the headline banner say so explicitly too, in the exact wording.
     if cma.get("leverage_caveat"):
         _rec_display = "FINANCIALLY VIABLE BUT HIGHLY LEVERAGED"
-    rec_color = DG if "VIABLE" in _rec_display or "MEETS" in _rec_display else colors.HexColor("#B71C1C")
+    rec_color = _theme_color("dark") if "VIABLE" in _rec_display or "MEETS" in _rec_display else colors.HexColor("#B71C1C")
     rec_box = Table([[Paragraph(_rec_display, ST["rec_approve"])]], colWidths=[170*mm])
     rec_box.setStyle(TableStyle([
         ("BACKGROUND",    (0,0),(-1,-1), rec_color),
@@ -2659,9 +2693,9 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
          Paragraph(str(cma["risk_level"]), _fa_cell_style), Paragraph(str(cma["total_score"]), _fa_cell_style)],
     ], colWidths=[32*mm,68*mm,32*mm,38*mm])
     fa_t.setStyle(TableStyle([
-        ("BACKGROUND",(0,0),(-1,0),DG),("TEXTCOLOR",(0,0),(-1,0),W),
+        ("BACKGROUND",(0,0),(-1,0),_theme_color("dark")),("TEXTCOLOR",(0,0),(-1,0),W),
         ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),10),
-        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("BACKGROUND",(0,1),(-1,1),LG),
+        ("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("BACKGROUND",(0,1),(-1,1),_theme_color("light")),
         ("TOPPADDING",(0,0),(-1,-1),8),("BOTTOMPADDING",(0,0),(-1,-1),8),
         ("GRID",(0,0),(-1,-1),0.5,W),
     ]))
@@ -2801,7 +2835,7 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     ]
     _fdef_t = Table(_fdef_rows, colWidths=[38*mm, 100*mm, 32*mm])
     _fdef_t.setStyle(TableStyle([
-        ("BACKGROUND",    (0,0),(-1, 0), MG),
+        ("BACKGROUND",    (0,0),(-1, 0), _theme_color("accent")),
         ("TEXTCOLOR",     (0,0),(-1, 0), W),
         ("FONTNAME",      (0,0),(-1, 0), "Helvetica-Bold"),
         ("FONTSIZE",      (0,0),(-1,-1), 7.5),
@@ -2925,7 +2959,7 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     sig_t = Table([
         ["Prepared By","Verified By","Authorised By"],
         ["\n\n\n________________________","\n\n\n________________________","\n\n\n________________________"],
-        ["Name:","Name:","Name:"],
+        [f"Name: {_prepared_by}","Name:","Name:"],
         ["Designation:","Designation:","Designation:"],
         ["Date:","Date:","Date:"],
     ], colWidths=[56.7*mm]*3)
@@ -2936,7 +2970,7 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
     ]))
     story.append(sig_t)
     NL(story, int(8*mm))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=MG))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=_theme_color("accent")))
     NL(story, 2)
     story.append(Paragraph(
         f"Report Reference: {ref_no}  |  Generated: {datetime.now().strftime('%d %b %Y %H:%M')}  |  "
@@ -2944,3 +2978,12 @@ def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
         ST["small"]))
 
     doc.build(story)
+
+
+def build_pdf(inp: dict, cma: dict, dpr: dict, output_path: str):
+    theme = _REPORT_THEMES.get(str(inp.get("report_theme", "Navy")), _REPORT_THEMES["Navy"])
+    token = _ACTIVE_REPORT_THEME.set(theme)
+    try:
+        return _build_pdf_content(inp, cma, dpr, output_path)
+    finally:
+        _ACTIVE_REPORT_THEME.reset(token)

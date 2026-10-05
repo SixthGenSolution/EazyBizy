@@ -7,12 +7,13 @@ import { GTABFormData } from "@/types/gtab";
 import {
   User, Building2, FileText, Wrench, DollarSign, Factory,
   Download, Landmark, TrendingUp, AlertCircle, CheckCircle2,
-  Loader2, IndianRupee, Sparkles, XCircle,
+  Loader2, IndianRupee, Sparkles, X, XCircle,
 } from "lucide-react";
 import { getFinancingPlan, getNormalizedProjectReportInputs, getProjectReportMachineryTotal } from "@/lib/projectReport";
 import { useToast } from "@/hooks/use-toast";
 import { useReportGenerator } from "@/hooks/useReportGenerator";
 import { buildCMAReportInput } from "@/lib/buildCMAReportInput";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { getMonthlyWorkingCapital } from "@/lib/workingCapital";
 import { CMAAdvisoryPanel } from "./CMAAdvisoryPanel";
 import { predictViability, recommendScheme } from "@/lib/aiEngine";
@@ -25,6 +26,23 @@ interface ApplicationPreviewProps {
   onEnsureSaved?: () => Promise<string | null>;
   isSaving?: boolean;
 }
+
+const REPORT_THEMES = [
+  { name: "Navy", swatch: "#173B63" },
+  { name: "Teal", swatch: "#0D9488" },
+  { name: "Royal Blue", swatch: "#2563EB" },
+  { name: "Burgundy", swatch: "#7F1D3B" },
+  { name: "Forest Green", swatch: "#166534" },
+  { name: "Charcoal", swatch: "#334155" },
+] as const;
+
+const REPORT_BANKS = [
+  "State Bank of India (SBI)", "HDFC Bank", "ICICI Bank", "Axis Bank", "Kotak Mahindra Bank",
+  "Bank of Baroda", "Punjab National Bank", "Canara Bank", "Union Bank of India", "Bank of India",
+  "Indian Bank", "Central Bank of India", "Indian Overseas Bank", "UCO Bank", "Bank of Maharashtra",
+  "IDBI Bank", "Yes Bank", "Federal Bank", "IndusInd Bank", "RBL Bank", "South Indian Bank",
+  "Bandhan Bank", "AU Small Finance Bank", "Other",
+];
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v || 0);
@@ -51,6 +69,10 @@ const Row = ({ label, value }: { label: string; value?: string | number | null }
 const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, isSaving }: ApplicationPreviewProps) => {
   const { toast } = useToast();
   const { isLoading: isCMALoading, error: cmaError, reportResult: cmaResult, generateReport: generateCMAReport, downloadPDF: downloadCMAPDF } = useReportGenerator();
+  const [customizeReportOpen, setCustomizeReportOpen] = useState(false);
+  const [reportTheme, setReportTheme] = useState<(typeof REPORT_THEMES)[number]["name"]>("Navy");
+  const [preparedBy, setPreparedBy] = useState("EasyBizy");
+  const [reportBank, setReportBank] = useState("");
 
   const reportInputs   = getNormalizedProjectReportInputs(formData);
   const financingPlan  = getFinancingPlan(formData);
@@ -74,13 +96,20 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
                         : viability.band === 'review' ? '#d97706'
                         : '#dc2626';
 
-  const handleDownloadReport = async () => {
+  const handleDownloadReport = () => setCustomizeReportOpen(true);
+
+  const handleGenerateReport = async () => {
     await onEnsureSaved?.();
-    const payload = buildCMAReportInput(formData);
+    const payload = buildCMAReportInput(formData, {
+      frontPageColor: reportTheme,
+      preparedBy: preparedBy.trim() || "EasyBizy",
+      bankName: reportBank || undefined,
+    });
     const result  = await generateCMAReport(payload);
     if (result) {
       // Always download the PDF — warnings are informational only
       downloadCMAPDF(result.pdf_url, result.report_id);
+      setCustomizeReportOpen(false);
       const hasWarnings = (result.validation_warnings?.length ?? 0) > 0;
       toast({
         title: hasWarnings ? "⚠️ Report downloaded with warnings" : "✅ Report ready — downloading now",
@@ -168,7 +197,7 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
           <Row label="Business Name" value={formData.business_entity_name} />
           <Row label="Registration" value={formData.registration_type} />
           <Row label="Industry" value={formData.industry_type} />
-          <Row label="Nature of Business" value={formData.type_of_business} />
+          <Row label="Nature of Business" value={formData.business_activity_other || formData.type_of_business} />
           <Row label="Business Type" value={formData.business_type} />
           <Row label="Loan Scheme" value={formData.loan_scheme} />
           <Row label="Area Type" value={formData.area_type} />
@@ -315,6 +344,7 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
       <div className="flex flex-col sm:flex-row gap-3 justify-end pt-2">
         {/* Primary: Download Report */}
         <Button
+          type="button"
           onClick={handleDownloadReport}
           disabled={isCMALoading}
           size="lg"
@@ -336,6 +366,100 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
           {isSaving ? "Submitting…" : "Submit Application"}
         </Button>
       </div>
+
+      <DialogPrimitive.Root open={customizeReportOpen} onOpenChange={setCustomizeReportOpen}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-black/50" />
+          <DialogPrimitive.Content
+            className="fixed left-1/2 top-1/2 z-[101] max-h-[calc(100dvh-24px)] w-[min(600px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <DialogPrimitive.Title className="text-lg font-semibold">Customize Report</DialogPrimitive.Title>
+                <DialogPrimitive.Description className="mt-1 text-sm text-slate-500">
+                  Choose the cover theme and report recipient before generating the CMA PDF.
+                </DialogPrimitive.Description>
+              </div>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setCustomizeReportOpen(false);
+                }}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close Customize Report"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">Front Page Colour</legend>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {REPORT_THEMES.map((theme) => (
+                  <button
+                    key={theme.name}
+                    type="button"
+                    role="radio"
+                    aria-checked={reportTheme === theme.name}
+                    onClick={() => setReportTheme(theme.name)}
+                    className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-sm transition-colors ${
+                      reportTheme === theme.name ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900" : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="h-8 w-8 shrink-0 rounded-lg border border-black/10" style={{ backgroundColor: theme.swatch }} />
+                    <span>{theme.name}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="mt-4 space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor="cma-prepared-by" className="text-sm font-medium">Prepared by</label>
+                <input
+                  id="cma-prepared-by"
+                  value={preparedBy}
+                  onChange={(event) => setPreparedBy(event.target.value)}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="cma-report-bank" className="text-sm font-medium">To</label>
+                <select
+                  id="cma-report-bank"
+                  value={reportBank}
+                  onChange={(event) => setReportBank(event.target.value)}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  <option value="">[Select Bank]</option>
+                  {REPORT_BANKS.map((bank) => <option key={bank} value={bank}>{bank}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setCustomizeReportOpen(false)}
+                className="h-10 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleGenerateReport()}
+                disabled={isCMALoading}
+                className="h-10 rounded-lg bg-[#1677ff] px-4 text-sm font-semibold text-white hover:bg-[#0f66d6] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isCMALoading ? "Generating…" : "Generate PDF"}
+              </button>
+            </div>
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
 
       {/* Smart CA Advisory Panel — actionable suggestions, not raw errors */}
       {cmaResult?.validation_warnings && cmaResult.validation_warnings.length > 0 && (

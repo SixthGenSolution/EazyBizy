@@ -102,10 +102,10 @@ const HeroSection = () => {
             >
               <Button 
                 size="lg" 
-                className="group gradient-gold hover:opacity-90 text-[#0B0F1A] font-bold shadow-[0_12px_28px_hsl(43_98%_58%/0.38)] transition-opacity duration-200"
+                className="group gradient-gold hover:opacity-90 text-[#0B0F1A] font-bold shadow-[0_12px_28px_rgba(14,165,233,0.32)] transition-opacity duration-200"
                 asChild
               >
-                <Link to="/signup">
+                  <Link to="/signup" className="text-white">
                   Start Application
                   <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Link>
@@ -224,7 +224,7 @@ const HeroSection = () => {
                   {/* CTA button */}
                   <div className="pt-2">
                     <div
-                      className="gradient-gold hover:opacity-90 rounded-xl py-3.5 text-center cursor-pointer transition-all duration-200 shadow-[0_10px_28px_hsl(43_98%_58%/0.36)]"
+                      className="gradient-gold hover:opacity-90 rounded-xl py-3.5 text-center cursor-pointer transition-all duration-200 shadow-[0_10px_28px_rgba(14,165,233,0.30)]"
                       onClick={() => window.location.href = '/signup'}
                     >
                       <span className="font-bold text-[#0B0F1A]">Continue Application -&gt;</span>

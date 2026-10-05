@@ -19,6 +19,7 @@ import { GTABFormData, PRODUCT_SUGGESTIONS, ProjectReportInputs, ProjectReportPr
 import { getFinancingPlan, getBankFinancePctBand } from "@/lib/projectReport";
 import { CASuggestionTip } from "@/components/gtab/CASuggestionTip";
 import { advisePromoterMargin } from "@/lib/caAdvisory";
+import SectionTitle from "@/components/gtab/SectionTitle";
 import { getMonthlyWorkingCapital } from "@/lib/workingCapital";
 import { getStep9Tips } from "@/lib/caGuidance";
 import { buildLoanSchedule } from "@/lib/loanSchedule";
@@ -104,18 +105,6 @@ interface ProjectReportInputsStepProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const NumberField = ({
   label,
@@ -955,7 +944,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
                       </div>
                       {wcFromStep7 > 0 && Math.abs(wcFromStep7 - netWC) > 5000 && (
                         <div className="text-right">
-                          <p className="text-xs text-amber-400">⚠ Step 7 entered: ₹{wcFromStep7.toLocaleString("en-IN")}</p>
+                          <p className="text-xs text-amber-400">⚠ Step 6 entered: ₹{wcFromStep7.toLocaleString("en-IN")}</p>
                           <p className="text-xs text-slate-400">vs. Calculated: ₹{netWC.toLocaleString("en-IN")}</p>
                         </div>
                       )}

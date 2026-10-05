@@ -147,8 +147,8 @@ export default function AIInsightPanel({ formData, currentStep, onSwitchScheme }
   // Default the active tab based on current step
   const defaultTab: Tab =
     currentStep === 2 ? 'scheme' :
-    currentStep === 4 || currentStep === 6 ? 'tips' :
-    currentStep === 8 ? 'viability' : 'scheme';
+    currentStep === 7 || currentStep === 9 ? 'tips' :
+    currentStep === 4 ? 'viability' : 'scheme';
 
   const activeTab = open ? tab : defaultTab;
 
@@ -178,7 +178,7 @@ export default function AIInsightPanel({ formData, currentStep, onSwitchScheme }
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           onClick={() => { setOpen(true); setTab(defaultTab); }}
-          className="fixed right-0 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1.5 rounded-l-xl px-2 py-4 shadow-xl"
+          className="fixed right-0 top-1/2 z-50 flex h-36 w-11 max-w-11 -translate-y-1/2 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-l-xl px-1 py-3 shadow-xl"
           style={{ background: 'hsl(174 72% 36%)', color: 'white' }}
           title="Open AI Insights"
         >

@@ -11,6 +11,7 @@ import { getStep7Tips } from "@/lib/caGuidance";
 import { CASuggestionTip } from "@/components/gtab/CASuggestionTip";
 import { adviseOpexToRevenue } from "@/lib/caAdvisory";
 import { numberToWords } from "@/lib/numberToWords";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface MonthlyExpensesStepProps {
   formData: GTABFormData;
@@ -19,18 +20,6 @@ interface MonthlyExpensesStepProps {
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const CurrencyInput = ({
   label, value, onChange, placeholder = "₹ 0", hint,

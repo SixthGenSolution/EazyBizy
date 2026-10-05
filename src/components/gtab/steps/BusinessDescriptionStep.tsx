@@ -7,23 +7,12 @@ import { GTABFormData, NATURE_OF_BUSINESS_OPTIONS } from "@/types/gtab";
 import { Building2, Lightbulb, Target, Wand2 } from "lucide-react";
 import AIAssistBadge from "@/components/AIAssistPanel";
 import { getStep4Tips } from "@/lib/caGuidance";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface BusinessDescriptionStepProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 // ── Industry-aware smart defaults ────────────────────────────────────────────
 

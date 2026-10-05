@@ -36,15 +36,15 @@ import AIInsightPanel from "./AIInsightPanel";
 import BankabilityBar from "./BankabilityBar";
 
 const STEPS = [
-  { id: 1, title: "KYC & Business Details", icon: "👤" },
+  { id: 1, title: "KYC \u0026 Business Details", icon: "👤" },
   { id: 2, title: "Loan & Scheme", icon: "📋" },
   { id: 3, title: "Business Profile", icon: "📝" },
-  { id: 4, title: "Capital Expenditure", icon: "🔧" },
+  { id: 4, title: "Financial Projections", icon: "🧾" },
   { id: 5, title: "Means of Finance", icon: "📊" },
-  { id: 6, title: "Operating Expenses", icon: "💰" },
-  { id: 7, title: "Working Capital", icon: "🎯" },
-  { id: 8, title: "Financial Projections", icon: "🧾" },
-  { id: 9, title: "Depreciation Schedule", icon: "📉" },
+  { id: 6, title: "Working Capital", icon: "🎯" },
+  { id: 7, title: "Capital Expenditure", icon: "🔧" },
+  { id: 8, title: "Depreciation Schedule", icon: "📉" },
+  { id: 9, title: "Operating Expenses", icon: "💰" },
   { id: 10, title: "Final Review", icon: "👁️" },
 ];
 
@@ -58,30 +58,55 @@ const INDUSTRY_CHOICES: Array<{
   label: string;
   description: string;
   icon: typeof Factory;
+  accent: string;
+  accentSoft: string;
+  accentBorder: string;
+  iconBg: string;
+  iconColor: string;
 }> = [
   {
     value: "manufacturing",
     label: "Manufacturing",
     description: "Use machinery, raw material, production, working capital and CMA calculations.",
     icon: Factory,
+    accent: "#1677ff",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#dbeafe",
+    iconColor: "#1d4ed8",
   },
   {
     value: "service",
     label: "Service",
     description: "Service-specific fields will be added next.",
     icon: Wrench,
+    accent: "#8b5cf6",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#ede9fe",
+    iconColor: "#7c3aed",
   },
   {
     value: "trading",
     label: "Trading",
     description: "Trading-specific inventory and sales fields will be added next.",
     icon: Store,
+    accent: "#10b981",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#dcfce7",
+    iconColor: "#15803d",
   },
   {
     value: "agriculture",
     label: "Agriculture",
     description: "Agriculture-specific crop/project fields will be added next.",
     icon: Sprout,
+    accent: "#f59e0b",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#fef3c7",
+    iconColor: "#d97706",
   },
 ];
 
@@ -95,6 +120,11 @@ type SchemeChoice = {
   subsidy: string;
   icon: typeof CreditCard;
   ready: boolean;
+  accent: string;
+  accentSoft: string;
+  accentBorder: string;
+  iconBg?: string;
+  iconColor?: string;
 };
 
 const SCHEME_CHOICES: SchemeChoice[] = [
@@ -108,6 +138,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "15–35% margin money",
     icon: BadgePercent,
     ready: true,
+    accent: "#f59e0b",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#fef3c7",
+    iconColor: "#d97706",
   },
   {
     value: "mudra_shishu",
@@ -119,6 +154,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "No subsidy",
     icon: Banknote,
     ready: true,
+    accent: "#14b8a6",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#ccfbf1",
+    iconColor: "#0f766e",
   },
   {
     value: "mudra_kishor",
@@ -130,6 +170,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "No subsidy",
     icon: CreditCard,
     ready: true,
+    accent: "#0ea5e9",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#fce7f3",
+    iconColor: "#be185d",
   },
   {
     value: "mudra_tarun",
@@ -141,6 +186,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "No subsidy",
     icon: TrendingUp,
     ready: true,
+    accent: "#8b5cf6",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#dcfce7",
+    iconColor: "#15803d",
   },
   {
     value: "mudra_tarunplus",
@@ -152,6 +202,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "No subsidy",
     icon: TrendingUp,
     ready: true,
+    accent: "#ec4899",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#ffedd5",
+    iconColor: "#c2410c",
   },
   {
     value: "cgtmse",
@@ -163,6 +218,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "Guarantee only",
     icon: ShieldCheck,
     ready: true,
+    accent: "#10b981",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#ede9fe",
+    iconColor: "#7c3aed",
   },
   {
     value: "normal_msme",
@@ -174,6 +234,11 @@ const SCHEME_CHOICES: SchemeChoice[] = [
     subsidy: "No subsidy",
     icon: Landmark,
     ready: true,
+    accent: "#ef4444",
+    accentSoft: "bg-[#7EEAEA] text-slate-800 border-cyan-300",
+    accentBorder: "border-cyan-300",
+    iconBg: "#fce7f3",
+    iconColor: "#be185d",
   },
 ];
 
@@ -201,6 +266,26 @@ interface StoredApplicationDraft {
 const clampStep = (step?: number) => {
   if (!step || !Number.isFinite(step)) return 1;
   return Math.min(Math.max(Math.trunc(step), 1), STEPS.length);
+};
+
+const scrollFormToTop = () => {
+  // The form lives inside a Dialog (overflow-y-auto), so window.scrollTo won't work.
+  // Walk up the DOM from the wizard shell and scroll the first scrollable ancestor.
+  const shell = document.querySelector(".gtab-application-shell");
+  if (!shell) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  let el: HTMLElement | null = shell.parentElement;
+  while (el) {
+    const { overflowY } = window.getComputedStyle(el);
+    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+      el.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    el = el.parentElement;
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
 };
 
 const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ applicationId, initialStep, draftMode = "resume", onComplete }, ref) => {
@@ -492,6 +577,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
           business_duration_months: data.business_duration_months || 0,
           business_entity_name: data.business_entity_name || '',
           type_of_business: data.type_of_business || '',
+          business_activity_other: data.business_activity_other || '',
           industry_type: data.industry_type || 'manufacturing',
           industry_other: data.industry_other || '',
           loan_scheme: data.loan_scheme || 'mudra',
@@ -612,6 +698,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       industry_type: industryType,
       industry_other: "",
       type_of_business: "",
+      business_activity_other: "",
       land_cost: 0,
       shed_building_cost: 0,
       plant_machinery: [],
@@ -636,6 +723,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
     }
     setIsIndustryConfirmed(true);
     setIsSchemeConfirmed(false); // show scheme picker next
+    scrollFormToTop();
   };
 
   const selectScheme = (schemeValue: string) => {
@@ -648,6 +736,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       return;
     }
     setIsSchemeConfirmed(true);
+    setTimeout(scrollFormToTop, 0);
   };
 
   // Calculate totals
@@ -745,6 +834,10 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
         cost:
           Number(item.cost) ||
           (Number(item.quantity) || 1) * (Number(item.unit_cost) || Number(item.cost) || 0),
+        machine_cost: Number(item.machine_cost) || Number(item.cost) || 0,
+        installation_cost: Number(item.installation_cost) || 0,
+        other_capital_cost: Number(item.other_capital_cost) || 0,
+        total_cost: Number(item.total_cost) || Number(item.cost) || 0,
         purchase_date: item.purchase_date,
         supplier_name: item.supplier_name,
         supplier_city: item.supplier_city,
@@ -960,7 +1053,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
     if (currentStep < STEPS.length) {
       const nextStepNumber = currentStep + 1;
       let nextFormData = formData;
-      if (currentStep === 4 || currentStep === 6) {
+      if (currentStep === 7 || currentStep === 9) {
         nextFormData = { ...formData, ...calculateTotals(formData) };
         setFormData(nextFormData);
       }
@@ -969,6 +1062,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       // Fire Supabase save in background — don't block navigation
       void saveProgress(false, currentStep, nextFormData, { silent: true });
       setCurrentStep(nextStepNumber);
+      scrollFormToTop();
     }
   };
 
@@ -997,17 +1091,17 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       );
       case 2: return !!(formData.business_entity_name && formData.loan_scheme && formData.type_of_business);
       case 3: return !!(formData.business_description || formData.products_services);
-      case 4: return Number(totals.total_project_cost) > 0 || (formData.plant_machinery?.length ?? 0) > 0;
-      case 5: return Number(totals.total_project_cost) > 0;
-      case 6: return Number(totals.total_monthly_expenses) > 0;
-      case 7: return true; // working capital is optional at input stage
-      case 8: {
+      case 4: {
         const r = formData.project_report_inputs;
         return (r?.revenue?.product_categories?.length ?? 0) > 0
           || Number(r?.dpr?.selling_price_per_unit || 0) > 0
           || Number(r?.dpr?.selling_price_per_kg || 0) > 0;
       }
-      case 9: return true; // depreciation schedule is auto-calculated, always complete
+      case 5: return Number(totals.total_project_cost) > 0;
+      case 6: return true; // working capital is optional at input stage
+      case 7: return Number(totals.total_project_cost) > 0 || (formData.plant_machinery?.length ?? 0) > 0;
+      case 8: return true; // depreciation schedule is auto-calculated, always complete
+      case 9: return Number(totals.total_monthly_expenses) > 0;
       case 10: return true;
       default: return false;
     }
@@ -1027,7 +1121,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       case 3:
         return <BusinessDescriptionStep formData={formData} updateFormData={updateFormData} />;
       case 4:
-        return <ProjectRequirementsStep formData={formData} updateFormData={updateFormData} />;
+        return <ProjectReportInputsStep formData={formData} updateFormData={updateFormData} />;
       case 5:
         return (
           <ProjectSummaryStep
@@ -1037,13 +1131,13 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
           />
         );
       case 6:
-        return <MonthlyExpensesStep formData={formData} updateFormData={updateFormData} />;
-      case 7:
         return <WorkingCapitalStep formData={formData} updateFormData={updateFormData} />;
+      case 7:
+        return <ProjectRequirementsStep formData={formData} updateFormData={updateFormData} />;
       case 8:
-        return <ProjectReportInputsStep formData={formData} updateFormData={updateFormData} />;
-      case 9:
         return <DepreciationScheduleStep formData={formData} />;
+      case 9:
+        return <MonthlyExpensesStep formData={formData} updateFormData={updateFormData} />;
       case 10:
         return (
           <ApplicationPreview
@@ -1072,33 +1166,37 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
     const canContinueIndustry = ["manufacturing", "service", "trading", "agriculture"].includes(formData.industry_type);
 
     return (
-      <div className="mx-auto w-full max-w-none bg-white text-gray-900">
-        <div className="overflow-hidden rounded-[1.5rem] border border-[#00C2D1]/20 bg-[#061421] text-slate-100 shadow-[0_24px_70px_rgba(0,0,0,0.18)]">
-          <div className="border-b border-white/10 bg-[#071c35] px-5 py-5 sm:px-7">
+      <div className="mx-auto w-full max-w-none rounded-[1.25rem] bg-[#030608] p-3 text-gray-900 sm:p-5">
+        <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white text-slate-900 shadow-[0_8px_22px_rgba(15,23,42,0.10)]">
+          <div className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-4">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border border-[#00C2D1]/35 bg-[#00C2D1]/10 text-[#7BE7F0]">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border border-[#1677ff]/20 bg-[#1677ff]/10 text-[#1677ff]">
                   <Layers3 className="h-6 w-6" />
                 </span>
                 <div className="min-w-0">
-                  <h2 className="text-2xl font-bold text-white">Choose Industry</h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+                  <h2 className="text-2xl font-bold text-gray-900">Choose Industry</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
                     Select the industry first so the application shows the right input fields and calculations.
                   </p>
                 </div>
               </div>
-              <span className="inline-flex w-fit items-center rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1.5 text-xs font-semibold text-[#F5D778]">
-                Step setup
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[#1677ff]/30 bg-[#1677ff]/10 px-3 py-1.5 text-xs font-semibold text-[#1677ff] shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#1677ff] opacity-70" />
+                Step Setup
               </span>
             </div>
           </div>
 
-          <div className="bg-[#061421] p-5 sm:p-7">
+          <div className="bg-white p-5 sm:p-7">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {INDUSTRY_CHOICES.map((choice) => {
               const Icon = choice.icon;
               const checked = formData.industry_type === choice.value;
               const isReady = ["manufacturing", "service", "trading", "agriculture"].includes(choice.value);
+              const checkedStyle = checked
+                ? `border-2 ${choice.accentBorder} shadow-[0_10px_24px_rgba(15,23,42,0.08)] ring-1 ring-offset-0 ${choice.accentSoft}`
+                : `border ${choice.accentBorder} ${choice.accentSoft} hover:shadow-md`;
 
               return (
                 <div
@@ -1112,11 +1210,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                       selectIndustry(choice.value);
                     }
                   }}
-                  className={`group flex min-h-[150px] items-start gap-4 rounded-[1.1rem] border p-5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#00C2D1]/50 ${
-                    checked
-                      ? "border-[#00C2D1]/70 bg-[#00C2D1]/10 shadow-[0_18px_44px_rgba(0,194,209,0.14)] ring-1 ring-[#00C2D1]/20"
-                      : "border-white/10 bg-[#0b2141]/75 hover:border-[#00C2D1]/35 hover:bg-[#0d2853]/85"
-                  }`}
+                  className={`group flex min-h-[150px] items-start gap-4 rounded-[1.1rem] border p-5 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-slate-300 ${checkedStyle}`}
                 >
                   <Checkbox
                     checked={checked}
@@ -1125,35 +1219,33 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                     }}
                     className={`mt-1 h-5 w-5 rounded-full border-2 bg-transparent ${
                       checked
-                        ? "border-[#00C2D1] bg-[#00C2D1] text-[#061421]"
-                        : "border-[#00C2D1]/70 data-[state=checked]:bg-[#00C2D1]"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 data-[state=checked]:bg-slate-900"
                     }`}
                   />
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
                         <span
-                          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border ${
-                            checked
-                              ? "border-[#00C2D1]/40 bg-[#00C2D1]/15 text-[#7BE7F0]"
-                              : "border-white/10 bg-white/5 text-slate-300 group-hover:border-[#00C2D1]/30 group-hover:text-[#7BE7F0]"
-                          }`}
+                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border-0"
+                          style={{ backgroundColor: choice.iconBg, color: choice.iconColor }}
                         >
                           <Icon className="h-6 w-6" />
                         </span>
-                        <span className="text-lg font-bold text-white">{choice.label}</span>
+                        <span className="text-lg font-bold text-gray-900">{choice.label}</span>
                       </div>
                       <span
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                           isReady
-                            ? "border border-[#00C2D1]/30 bg-[#00C2D1]/10 text-[#7BE7F0]"
-                            : "border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#F5D778]"
+                            ? "border-transparent text-white"
+                            : "border-amber-200 bg-amber-50 text-amber-700"
                         }`}
+                        style={isReady ? { backgroundColor: choice.accent } : undefined}
                       >
                         {isReady ? "Ready" : "Next"}
                       </span>
                     </div>
-                    <p className="mt-4 text-sm leading-6 text-slate-300">{choice.description}</p>
+                    <p className="mt-4 text-sm leading-6 text-slate-600">{choice.description}</p>
                   </div>
                 </div>
               );
@@ -1170,7 +1262,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
             <div className="mt-7 flex justify-end">
               <Button
                 onClick={confirmIndustry}
-                className="h-12 min-w-[160px] gap-2 rounded-[1rem] bg-[#D4AF37] px-6 font-bold text-[#061421] shadow-[0_14px_30px_rgba(212,175,55,0.22)] hover:bg-[#f0c84b]"
+                className="h-12 min-w-[160px] gap-2 rounded-lg bg-[#1677ff] px-6 font-bold text-white shadow-[0_10px_20px_rgba(22,119,255,0.24)] hover:bg-[#0f66d6]"
               >
                 Continue
                 <ChevronRight className="h-4 w-4" />
@@ -1187,53 +1279,58 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
     const badgeClass = (color: SchemeChoice['badgeColor']) => {
       if (color === 'gold')  return 'border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#F5D778]';
       if (color === 'green') return 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300';
-      return 'border-[#00C2D1]/30 bg-[#00C2D1]/10 text-[#7BE7F0]';
+      return 'border-[#1677ff]/20 bg-[#1677ff]/10 text-[#1677ff]';
     };
 
     return (
-      <div className="mx-auto w-full max-w-none bg-white text-gray-900">
-        <div className="overflow-hidden rounded-[1.5rem] border border-[#00C2D1]/20 bg-[#061421] text-slate-100 shadow-[0_24px_70px_rgba(0,0,0,0.18)]">
+      <div className="mx-auto w-full max-w-none rounded-[1.25rem] bg-[#030608] p-3 text-gray-900 sm:p-5">
+        <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white text-slate-900 shadow-[0_8px_22px_rgba(15,23,42,0.10)]">
 
           {/* Header */}
-          <div className="border-b border-white/10 bg-[#071c35] px-5 py-5 sm:px-7">
+          <div className="border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-start gap-4">
                 {/* Back to industry */}
                 <button
                   onClick={() => setIsIndustryConfirmed(false)}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-slate-300 hover:border-[#00C2D1]/40 hover:text-[#7BE7F0] transition"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:border-[#1677ff]/40 hover:text-[#1677ff] transition"
                   aria-label="Back to industry"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border border-[#00C2D1]/35 bg-[#00C2D1]/10 text-[#7BE7F0]">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1rem] border border-[#1677ff]/20 bg-[#1677ff]/10 text-[#1677ff]">
                   <CreditCard className="h-6 w-6" />
                 </span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-2xl font-bold text-white">Choose Loan Scheme</h2>
-                    <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-0.5 text-xs text-slate-400">
-                      Industry: <span className="font-semibold capitalize text-[#7BE7F0]">{formData.industry_type}</span>
+                    <h2 className="text-2xl font-bold text-gray-900">Choose Loan Scheme</h2>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-500">
+                      Industry: <span className="font-semibold capitalize text-[#1677ff]">{formData.industry_type}</span>
                     </span>
                   </div>
-                  <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-300">
+                  <p className="mt-1.5 max-w-2xl text-sm leading-6 text-slate-500">
                     Select the government scheme that best matches your project size and category.
                     This drives the financing split, subsidy calculation, and CMA structure.
                   </p>
                 </div>
               </div>
-              <span className="inline-flex w-fit items-center rounded-full border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1.5 text-xs font-semibold text-[#F5D778]">
-                Step setup
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[#1677ff]/30 bg-[#1677ff]/10 px-3 py-1.5 text-xs font-semibold text-[#1677ff] shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#1677ff] opacity-70" />
+                Step Setup
               </span>
             </div>
           </div>
 
           {/* Scheme cards */}
-          <div className="bg-[#061421] p-5 sm:p-7">
+          <div className="bg-white p-5 sm:p-7">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {SCHEME_CHOICES.map((scheme) => {
-                const Icon    = scheme.icon;
+                const Icon = scheme.icon;
                 const checked = formData.loan_scheme === scheme.value;
+                const checkedStyle = checked
+                  ? `border-2 ${scheme.accentBorder} shadow-[0_10px_24px_rgba(15,23,42,0.08)] ring-1 ring-offset-0 ${scheme.accentSoft}`
+                  : `border ${scheme.accentBorder} ${scheme.accentSoft} hover:shadow-md`;
+
                 return (
                   <div
                     key={scheme.value}
@@ -1241,46 +1338,47 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                     tabIndex={0}
                     onClick={() => selectScheme(scheme.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectScheme(scheme.value); }}}
-                    className={`group flex min-h-[170px] flex-col gap-3 rounded-[1.1rem] border p-5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#00C2D1]/50 cursor-pointer ${
-                      checked
-                        ? 'border-[#00C2D1]/70 bg-[#00C2D1]/10 shadow-[0_18px_44px_rgba(0,194,209,0.14)] ring-1 ring-[#00C2D1]/20'
-                        : 'border-white/10 bg-[#0b2141]/75 hover:border-[#00C2D1]/35 hover:bg-[#0d2853]/85'
-                    }`}
+                    className={`group flex min-h-[170px] flex-col gap-3 rounded-[1.1rem] border p-5 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-slate-300 cursor-pointer ${checkedStyle}`}
                   >
                     {/* Card header */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => { if (v) selectScheme(scheme.value); }}
-                          className={`mt-0.5 h-5 w-5 rounded-full border-2 bg-transparent ${
-                            checked ? 'border-[#00C2D1] bg-[#00C2D1] text-[#061421]' : 'border-[#00C2D1]/70'
-                          }`}
-                        />
-                        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.8rem] border ${
-                          checked ? 'border-[#00C2D1]/40 bg-[#00C2D1]/15 text-[#7BE7F0]' : 'border-white/10 bg-white/5 text-slate-300 group-hover:border-[#00C2D1]/30 group-hover:text-[#7BE7F0]'
-                        }`}>
-                          <Icon className="h-5 w-5" />
-                        </span>
-                        <span className="text-base font-bold text-white">{scheme.label}</span>
-                      </div>
-                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(scheme.badgeColor)}`}>
-                        {scheme.badge}
+                    <div className="flex items-center gap-3">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => { if (v) selectScheme(scheme.value); }}
+                        className={`shrink-0 h-5 w-5 rounded-full border-2 bg-transparent ${
+                          checked ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300'
+                        }`}
+                      />
+                      <span
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.8rem] border-0"
+                        style={{ backgroundColor: scheme.iconBg, color: scheme.iconColor }}
+                      >
+                        <Icon className="h-5 w-5" />
                       </span>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className="text-base font-bold text-gray-900 leading-tight">{scheme.label}</span>
+                        <span
+                          className={`w-fit rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                            checked ? `${scheme.accentSoft} border-transparent` : badgeClass(scheme.badgeColor)
+                          }`}
+                        >
+                          {scheme.badge}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Description */}
-                    <p className="flex-1 text-sm leading-5 text-slate-300">{scheme.description}</p>
+                    <p className="flex-1 text-sm leading-5 text-slate-700">{scheme.description}</p>
 
                     {/* Key numbers */}
-                    <div className="mt-auto grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
+                    <div className="mt-auto grid grid-cols-2 gap-2 border-t border-cyan-300/50 pt-3">
                       <div>
                         <p className="text-[10px] uppercase tracking-wide text-slate-500">Max Loan</p>
-                        <p className={`mt-0.5 text-xs font-semibold ${checked ? 'text-[#7BE7F0]' : 'text-slate-300'}`}>{scheme.maxLoan}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-800">{scheme.maxLoan}</p>
                       </div>
                       <div>
                         <p className="text-[10px] uppercase tracking-wide text-slate-500">Subsidy</p>
-                        <p className={`mt-0.5 text-xs font-semibold ${scheme.subsidy !== 'No subsidy' ? 'text-[#F5D778]' : 'text-slate-400'}`}>{scheme.subsidy}</p>
+                        <p className={`mt-0.5 text-xs font-semibold ${scheme.subsidy !== 'No subsidy' ? 'text-amber-600' : 'text-slate-500'}`}>{scheme.subsidy}</p>
                       </div>
                     </div>
                   </div>
@@ -1293,10 +1391,10 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mt-5 rounded-[1rem] border border-[#D4AF37]/25 bg-[#D4AF37]/8 p-4"
+                className="mt-5 rounded-[1rem] border border-amber-200 bg-amber-50/70 p-4"
               >
-                <p className="mb-3 text-sm font-semibold text-[#F5D778]">
-                  PMEGP — Area Type <span className="text-slate-400 font-normal">(affects subsidy %)</span>
+                  <p className="mb-3 text-sm font-semibold text-amber-700">
+                  PMEGP — Area Type <span className="font-normal text-slate-500">(affects subsidy %)</span>
                 </p>
                 <div className="flex gap-3">
                   {[
@@ -1308,15 +1406,15 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                       onClick={() => updateFormData({ area_type: opt.value as 'urban' | 'rural' })}
                       className={`flex flex-1 flex-col rounded-[0.8rem] border p-3 text-left transition ${
                         formData.area_type === opt.value
-                          ? 'border-[#D4AF37]/60 bg-[#D4AF37]/12'
-                          : 'border-white/10 bg-white/3 hover:border-[#D4AF37]/30'
+                          ? 'border-amber-400 bg-amber-100'
+                          : 'border-slate-200 bg-white hover:border-amber-300'
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <div className={`h-4 w-4 rounded-full border-2 ${formData.area_type === opt.value ? 'border-[#D4AF37] bg-[#D4AF37]' : 'border-white/30'}`} />
-                        <span className="text-sm font-semibold text-white">{opt.label}</span>
+                        <span className="text-sm font-semibold text-gray-900">{opt.label}</span>
                       </div>
-                      <span className="mt-1 text-xs text-[#F5D778]">{opt.note}</span>
+                      <span className="mt-1 text-xs text-amber-700">{opt.note}</span>
                     </button>
                   ))}
                 </div>
@@ -1326,7 +1424,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
             <div className="mt-7 flex items-center justify-between">
               <button
                 onClick={() => setIsIndustryConfirmed(false)}
-                className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200 transition"
+                className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 transition"
               >
                 <ChevronLeft className="h-4 w-4" />
                 Back to Industry
@@ -1334,7 +1432,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
               <Button
                 onClick={confirmScheme}
                 disabled={!formData.loan_scheme}
-                className="h-12 min-w-[160px] gap-2 rounded-[1rem] bg-[#D4AF37] px-6 font-bold text-[#061421] shadow-[0_14px_30px_rgba(212,175,55,0.22)] hover:bg-[#f0c84b] disabled:opacity-50"
+                className="h-12 min-w-[160px] gap-2 rounded-lg bg-[#1677ff] px-6 font-bold text-white shadow-[0_10px_20px_rgba(22,119,255,0.24)] hover:bg-[#0f66d6] disabled:opacity-50"
               >
                 Continue
                 <ChevronRight className="h-4 w-4" />
@@ -1347,7 +1445,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
   }
 
   return (
-    <div className="gtab-application-shell mx-auto w-full max-w-none overflow-x-hidden bg-white text-gray-900">
+    <div className="gtab-application-shell mx-auto w-full max-w-none overflow-x-hidden rounded-[1.25rem] bg-[#030608] p-3 text-gray-900 sm:p-5">
       {/* AI Insight Panel — floats as right-side panel across all steps */}
       {currentStep < 10 && (
         <AIInsightPanel
@@ -1357,7 +1455,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
         />
       )}
       {/* Progress Header — a distinct raised panel, not flat white-on-white */}
-      <div className="relative rounded-[1.1rem] border border-gray-100 bg-gradient-to-b from-white to-slate-50/60 p-4 pb-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_32px_-10px_rgba(15,23,42,0.10)] sm:p-6 sm:pb-6">
+      <div className="relative rounded-[0.85rem] border border-slate-200 bg-white p-4 pb-5 shadow-[0_8px_22px_rgba(15,23,42,0.10)] sm:p-6 sm:pb-6">
         <div className="flex items-center justify-between gap-4">
           <h2 className="min-w-0 text-3xl font-extrabold leading-tight text-gray-900">
             {STEPS[currentStep - 1].title}
@@ -1366,12 +1464,51 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
             Step {currentStep} of {STEPS.length}
           </span>
         </div>
-        <Progress value={progress} className="mt-5 h-2 bg-[#1f2937] shadow-[inset_0_1px_2px_rgba(0,0,0,0.25)] [&>div]:bg-[#35d4c6] [&>div]:shadow-[0_0_8px_rgba(53,212,198,0.6)]" />
+        <Progress value={progress} className="mt-5 h-2 bg-slate-100 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)] [&>div]:bg-[#1677ff]" />
 
         {/* Step Indicators — click any step to jump directly */}
         {/* lg:grid-cols must equal STEPS.length (currently 10) — a mismatch
             here is exactly what wrapped "Final Review" onto its own row. */}
-        <div className="gtab-step-scroll mt-6 flex snap-x gap-4 overflow-x-auto pb-3 lg:grid lg:grid-cols-10 lg:gap-2 lg:overflow-visible lg:pb-2">
+
+        {/* Mobile-only: all step circles in a scrollable row */}
+        <div className="mt-5 flex snap-x gap-2 overflow-x-auto px-1 py-2 lg:hidden">
+          {STEPS.map((step) => {
+            const isActive   = step.id === currentStep;
+            const isDone     = step.id < currentStep;
+            const isComplete = isStepComplete(step.id);
+            const isGap      = isDone && !isComplete;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => {
+                  if (step.id === currentStep) return;
+                  saveLocalDraft(currentStep, formData);
+                  void saveProgress(false, currentStep, formData, { silent: true });
+                  setCurrentStep(step.id);
+                  scrollFormToTop();
+                }}
+                className="flex shrink-0 snap-start flex-col items-center gap-1"
+              >
+                <div
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold transition-all duration-200
+                    ${isActive
+                      ? "border-[#1677ff] bg-[#1677ff] text-white shadow-[0_0_0_3px_rgba(22,119,255,0.16),0_4px_10px_-2px_rgba(22,119,255,0.35)] -translate-y-0.5"
+                      : isComplete
+                        ? "border-emerald-500 bg-emerald-500/15 text-emerald-600"
+                        : isGap
+                          ? "border-amber-400 bg-amber-50 text-amber-600"
+                          : "border-gray-300 bg-white text-gray-400"
+                    }`}
+                >
+                  {isComplete && !isActive ? <Check className="w-3 h-3" /> : step.id}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="gtab-step-scroll mt-6 hidden snap-x gap-4 overflow-x-auto pb-3 pt-2 lg:grid lg:grid-cols-10 lg:gap-2 lg:overflow-visible lg:pb-2 lg:pt-0">
           {STEPS.map((step) => {
             const isActive   = step.id === currentStep;
             const isDone     = step.id < currentStep;
@@ -1389,6 +1526,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                   saveLocalDraft(currentStep, formData);
                   void saveProgress(false, currentStep, formData, { silent: true });
                   setCurrentStep(step.id);
+                  scrollFormToTop();
                 }}
                 title={`Go to ${step.title}`}
                 className={`flex min-w-[108px] shrink-0 snap-start flex-col items-center text-center sm:min-w-[118px] lg:min-w-0
@@ -1398,14 +1536,14 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                 `}
               >
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-medium transition-all duration-200
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-sm font-medium transition-all duration-200
                     ${isActive
-                      ? "border-[#15b8aa] bg-[#15b8aa] text-white shadow-[0_0_0_3px_rgba(21,184,170,0.25),0_6px_14px_-2px_rgba(21,184,170,0.55),0_2px_4px_rgba(15,23,42,0.15)] -translate-y-0.5"
+                      ? "border-[#1677ff] bg-[#1677ff] text-white shadow-[0_0_0_3px_rgba(22,119,255,0.16),0_6px_14px_-2px_rgba(22,119,255,0.35),0_2px_4px_rgba(15,23,42,0.15)] -translate-y-0.5"
                       : isComplete
                         ? "border-emerald-500 bg-emerald-500/15 text-emerald-600 shadow-[0_3px_8px_-1px_rgba(16,185,129,0.3),0_1px_2px_rgba(15,23,42,0.06)] hover:bg-emerald-500/25 hover:-translate-y-0.5"
                         : isGap
                           ? "border-amber-400 bg-amber-50 text-amber-600 shadow-[0_3px_8px_-1px_rgba(217,119,6,0.25)] hover:bg-amber-100 hover:-translate-y-0.5"
-                          : "border-gray-300 bg-white text-gray-500 shadow-[0_2px_5px_rgba(15,23,42,0.08)] hover:border-[#35d4c6] hover:text-[#15b8aa] hover:-translate-y-0.5"
+                          : "border-gray-300 bg-white text-gray-500 shadow-[0_2px_5px_rgba(15,23,42,0.08)] hover:border-[#1677ff] hover:text-[#1677ff] hover:-translate-y-0.5"
                     }`}
                   title={isGap ? "Some required details are missing" : undefined}
                 >
@@ -1413,7 +1551,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
                 </div>
                 <span
                   className={`gtab-step-label mt-2 block w-full max-w-[104px] whitespace-normal text-center sm:max-w-[112px] lg:max-w-[92px] ${
-                    isActive ? "font-semibold text-[#15b8aa]" : isDone ? "text-[#15b8aa]" : "text-gray-400"
+                    isActive ? "font-semibold text-[#1677ff]" : isDone ? "text-[#1677ff]" : "text-gray-400"
                   }`}
                 >
                   {step.title}
@@ -1440,7 +1578,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
-            className="overflow-hidden rounded-[1rem] border border-gray-100 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_28px_-8px_rgba(15,23,42,0.10)] sm:rounded-[1.1rem] sm:p-6 md:p-8"
+            className="overflow-hidden rounded-[0.85rem] border border-slate-200 bg-white p-2 shadow-[0_8px_22px_rgba(15,23,42,0.10)] sm:p-6 md:p-8"
             >
               {renderStep()}
             </motion.div>
@@ -1453,12 +1591,12 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       </div>
 
       {/* Navigation Buttons */}
-      <div className="gtab-action-bar relative mt-4 grid grid-cols-1 gap-3 rounded-[1rem] border border-gray-100 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_-6px_rgba(15,23,42,0.10)] sm:mt-6 sm:flex sm:flex-row sm:justify-between sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+      <div className="gtab-action-bar relative mt-4 grid grid-cols-1 gap-3 rounded-[0.85rem] border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.10)] sm:mt-6 sm:flex sm:flex-row sm:justify-between sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
         <Button
           variant="outline"
           onClick={prevStep}
           disabled={currentStep === 1}
-          className="h-12 w-full rounded-[0.9rem] border-gray-300 text-sm font-semibold text-gray-700 shadow-[0_2px_6px_rgba(15,23,42,0.06)] transition-transform hover:-translate-y-0.5 hover:bg-gray-100 hover:shadow-[0_4px_10px_rgba(15,23,42,0.10)] sm:h-11 sm:w-auto"
+          className="h-12 w-full rounded-[1.05rem] border border-white/80 bg-white text-sm font-semibold text-slate-900 shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_8px_18px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-slate-100 hover:text-slate-900 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_12px_22px_rgba(15,23,42,0.24)] disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:w-auto"
         >
           <ChevronLeft className="w-4 h-4" />
           Previous
@@ -1469,7 +1607,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
             variant="outline"
             onClick={() => saveProgress(false)}
             disabled={isSaving}
-            className="h-12 rounded-[0.9rem] border-gray-300 text-sm font-semibold text-gray-700 shadow-[0_2px_6px_rgba(15,23,42,0.06)] transition-transform hover:-translate-y-0.5 hover:bg-gray-100 hover:shadow-[0_4px_10px_rgba(15,23,42,0.10)] sm:h-11"
+            className="h-12 rounded-[1.05rem] border border-white/80 bg-white text-sm font-semibold text-slate-900 shadow-[0_0_0_1px_rgba(255,255,255,0.14),0_8px_18px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-slate-100 hover:text-slate-900 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.18),0_12px_22px_rgba(15,23,42,0.24)] disabled:cursor-not-allowed disabled:opacity-60 sm:h-11"
           >
             <Save className="w-4 h-4" />
             {isSaving ? "Saving..." : "Save Draft"}
@@ -1478,7 +1616,7 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
           {currentStep < STEPS.length ? (
             <Button
               onClick={nextStep}
-              className="h-12 rounded-[0.9rem] bg-[#D4AF37] text-sm font-bold text-[#061421] shadow-[0_2px_4px_rgba(15,23,42,0.15),0_14px_26px_-4px_rgba(212,175,55,0.45)] transition-transform hover:-translate-y-0.5 hover:bg-[#f0c84b] hover:shadow-[0_4px_8px_rgba(15,23,42,0.18),0_18px_32px_-4px_rgba(212,175,55,0.55)] active:translate-y-0 sm:h-11"
+              className="h-12 rounded-lg bg-[#1677ff] text-sm font-bold text-white shadow-[0_2px_4px_rgba(15,23,42,0.15),0_12px_22px_-4px_rgba(22,119,255,0.32)] transition-transform hover:-translate-y-0.5 hover:bg-[#0f66d6] hover:shadow-[0_4px_8px_rgba(15,23,42,0.18),0_16px_26px_-4px_rgba(22,119,255,0.38)] active:translate-y-0 sm:h-11"
             >
               Next
               <ChevronRight className="w-4 h-4" />

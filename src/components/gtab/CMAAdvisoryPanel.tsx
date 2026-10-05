@@ -308,7 +308,7 @@ function diagnose(warnings: string[], fd: GTABFormData): Advisory[] {
         `At ${fmt(monthlyRev)} monthly revenue, this leaves ${pct(1 - labourRatio - (monthlyRM / monthlyRev))} ` +
         `for RM + overhead + profit — too thin for loan repayment.`,
       fixes: [{
-        step: "Step 7",
+        step: "Step 8",
         where: "Manpower → Staff Headcount / Salary",
         current: `${totalStaff} staff × avg salary = ${fmt(monthlySalary)}/month (${pct(labourRatio)} of revenue)`,
         correct: `Salary should be ≤ ${fmt(maxAllowed)}/month. Consider hiring ${Math.ceil(maxAllowed / (monthlySalary / totalStaff))} staff instead of ${totalStaff}, OR stage hiring in Year 2.`,

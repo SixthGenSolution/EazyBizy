@@ -18,24 +18,13 @@ import {
 } from "lucide-react";
 import { GTABFormData, GTABIndustryType } from "@/types/gtab";
 import { numberToWords } from "@/lib/numberToWords";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface DynamicIndustryFieldsProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
   industryType: GTABIndustryType;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const CurrencyInput = ({ label, value, onChange, placeholder = "₹ 0", showWords = false }) => {
   const words = showWords && value > 0 ? numberToWords(value) : "";
@@ -87,7 +76,7 @@ const ManufacturingFields = ({
       subtitle="Daily/monthly production capacity and planning"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 sm:pl-14 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Expected Monthly Production Capacity (Units)"
         value={formData.production_capacity_units || 0}
@@ -112,102 +101,9 @@ const ManufacturingFields = ({
         }
         placeholder="₹ 200"
       />
-      <PercentageInput
-        label="Production Utilization % (First Year)"
-        value={formData.production_utilization_pct || 50}
-        onChange={(v) =>
-          updateFormData({ production_utilization_pct: v })
-        }
-        placeholder="50"
-      />
+      
     </div>
 
-    <div className="border-t" />
-
-    <SectionTitle
-      icon={Wrench}
-      title="Machinery & Equipment"
-      subtitle="Plant and machinery investment details"
-    />
-
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-      <CurrencyInput
-        label="Total Machinery Cost (₹)"
-        value={formData.machinery_total_cost || 0}
-        onChange={(v) =>
-          updateFormData({ machinery_total_cost: v })
-        }
-        placeholder="₹ 500,000"
-        showWords
-      />
-      <CurrencyInput
-        label="Machinery Installation Cost (₹)"
-        value={formData.machinery_installation_cost || 0}
-        onChange={(v) =>
-          updateFormData({ machinery_installation_cost: v })
-        }
-        placeholder="₹ 50,000"
-        showWords
-      />
-      <Input
-        className="h-12 rounded-xl"
-        placeholder="Main machinery type (e.g., CNC, Lathe, etc.)"
-        value={formData.machinery_type || ""}
-        onChange={(e) => updateFormData({ machinery_type: e.target.value })}
-      />
-      <Input
-        className="h-12 rounded-xl"
-        placeholder="Equipment supplier name"
-        value={formData.machinery_supplier_name || ""}
-        onChange={(e) =>
-          updateFormData({ machinery_supplier_name: e.target.value })
-        }
-      />
-    </div>
-
-    <div className="border-t" />
-
-    <SectionTitle
-      icon={Package}
-      title="Raw Material"
-      subtitle="Raw material sourcing and inventory"
-    />
-
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-      <CurrencyInput
-        label="Monthly Raw Material Cost (₹)"
-        value={formData.raw_material_cost || 0}
-        onChange={(v) =>
-          updateFormData({ raw_material_cost: v })
-        }
-        placeholder="₹ 100,000"
-        showWords
-      />
-      <PercentageInput
-        label="Raw Material as % of Total Cost"
-        value={formData.raw_material_pct || 0}
-        onChange={(v) =>
-          updateFormData({ raw_material_pct: v })
-        }
-        placeholder="30"
-      />
-      <Input
-        className="h-12 rounded-xl"
-        placeholder="Primary raw material (e.g., Steel, Cotton, etc.)"
-        value={formData.primary_raw_material || ""}
-        onChange={(e) =>
-          updateFormData({ primary_raw_material: e.target.value })
-        }
-      />
-      <Input
-        className="h-12 rounded-xl"
-        placeholder="Raw material supplier"
-        value={formData.raw_material_supplier || ""}
-        onChange={(e) =>
-          updateFormData({ raw_material_supplier: e.target.value })
-        }
-      />
-    </div>
   </>
 );
 
@@ -226,7 +122,7 @@ const ServiceFields = ({
       subtitle="Service delivery and revenue planning"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Expected Monthly Service Revenue (₹)"
         value={formData.expected_monthly_revenue || 0}
@@ -270,7 +166,7 @@ const ServiceFields = ({
       subtitle="Employee costs and HR planning"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Skilled Workers Count"
         value={formData.skilled_workers_count || 0}
@@ -315,7 +211,7 @@ const ServiceFields = ({
       subtitle="Ongoing operational costs"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Monthly Office Rent (₹)"
         value={formData.monthly_rent || 0}
@@ -369,7 +265,7 @@ const TradingFields = ({
       subtitle="Stock and inventory planning"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Average Inventory Value (₹)"
         value={formData.average_inventory_value || 0}
@@ -405,7 +301,7 @@ const TradingFields = ({
       subtitle="Procurement and revenue planning"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Expected Monthly Purchases (₹)"
         value={formData.monthly_purchase_value || 0}
@@ -450,7 +346,7 @@ const TradingFields = ({
       subtitle="Credit arrangement and payment cycle"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Supplier Credit Sought (Days)"
         value={formData.supplier_credit_days || 30}
@@ -494,7 +390,7 @@ const AgricultureFields = ({
       subtitle="Agricultural commodity and project information"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <Input
         className="h-12 rounded-xl"
         placeholder="Main crop (e.g., Wheat, Cotton, Spice)"
@@ -525,7 +421,7 @@ const AgricultureFields = ({
       subtitle="Agricultural land and asset investment"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Land Area (Acres)"
         value={formData.land_area_acres || 0}
@@ -562,7 +458,7 @@ const AgricultureFields = ({
       subtitle="Expected harvest and seasonal productivity"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Expected Annual Yield (Units/Quintals)"
         value={formData.expected_annual_yield || 0}
@@ -597,7 +493,7 @@ const AgricultureFields = ({
       subtitle="Working capital requirements during growing season"
     />
 
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
       <CurrencyInput
         label="Seeds & Inputs Cost (₹)"
         value={formData.seeds_inputs_cost || 0}

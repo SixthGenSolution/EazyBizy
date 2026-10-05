@@ -22,6 +22,7 @@ import {
   NATURE_OF_BUSINESS_OPTIONS,
   IMPLEMENTING_AGENCY_OPTIONS,
 } from "@/types/gtab";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 const fmtINR = (n: number) =>
   "₹" + Math.round(n).toLocaleString("en-IN");
@@ -30,18 +31,6 @@ interface BusinessLoanDetailsStepProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 // CA Tip box
 const CATip = ({ tips }: { tips: string[] }) => (
@@ -165,7 +154,7 @@ const BusinessLoanDetailsStep = ({ formData, updateFormData }: BusinessLoanDetai
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Name of Business Entity <span className="text-red-500">*</span></Label>
-                <AIAssistBadge variant="inline" fieldLabel="Name of Business Entity" tooltip="AI can suggest a suitable business name" onApply={(t) => updateFormData({ business_entity_name: t })} />
+                <AIAssistBadge variant="inline" fieldLabel="Name of Business Entity" tooltip="AI can suggest a suitable business name" showDataChart={false} onApply={(t) => updateFormData({ business_entity_name: t })} />
               </div>
               <Input
                 className="h-12 rounded-xl"
@@ -189,7 +178,10 @@ const BusinessLoanDetailsStep = ({ formData, updateFormData }: BusinessLoanDetai
               <Label>Nature / Type of Business Activity *</Label>
               <Select
                 value={formData.type_of_business || ""}
-                onValueChange={(value) => updateFormData({ type_of_business: value })}
+                onValueChange={(value) => updateFormData({
+                  type_of_business: value,
+                  business_activity_other: value === "other_manufacturing" ? formData.business_activity_other : "",
+                })}
               >
                 <SelectTrigger className="h-12 rounded-xl">
                   <SelectValue placeholder={`Select ${industryKey} activity`} />
@@ -202,6 +194,14 @@ const BusinessLoanDetailsStep = ({ formData, updateFormData }: BusinessLoanDetai
                   ))}
                 </SelectContent>
               </Select>
+              {formData.type_of_business === "other_manufacturing" && (
+                <Input
+                  className="h-12 rounded-xl"
+                  value={formData.business_activity_other || ""}
+                  onChange={(e) => updateFormData({ business_activity_other: e.target.value })}
+                  placeholder="Enter your manufacturing activity"
+                />
+              )}
             </div>
 
           </div>
@@ -312,7 +312,7 @@ const BusinessLoanDetailsStep = ({ formData, updateFormData }: BusinessLoanDetai
               <div className="space-y-2 md:col-span-2">
                 <div className="flex items-center justify-between">
                   <Label>Specify Scheme Name *</Label>
-                  <AIAssistBadge variant="inline" fieldLabel="Specify Scheme Name" tooltip="AI can help identify the correct loan scheme" onApply={(t) => updateFormData({ loan_scheme_other: t })} />
+                  <AIAssistBadge variant="inline" fieldLabel="Specify Scheme Name" tooltip="AI can help identify the correct loan scheme" showDataChart={false} onApply={(t) => updateFormData({ loan_scheme_other: t })} />
                 </div>
                 <Input
                   className="h-12 rounded-xl"

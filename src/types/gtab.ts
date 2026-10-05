@@ -27,6 +27,10 @@ export interface MachineryItem {
   id: string;
   machine_name: string;
   cost: number;
+  machine_cost?: number;
+  installation_cost?: number;
+  other_capital_cost?: number;
+  total_cost?: number;
   quantity?: number;
   unit_cost?: number;
   purchase_date?: string;
@@ -54,10 +58,16 @@ export function parsePlantMachinery(value: unknown): MachineryItem[] {
       id: item.id || crypto.randomUUID(),
       machine_name: item.machine_name ?? "",
       quantity: Number(item.quantity) || 1,
-      unit_cost: Number(item.unit_cost) || Number(item.cost) || 0,
-      cost:
-        Number(item.cost) ||
-        (Number(item.quantity) || 1) * (Number(item.unit_cost) || Number(item.cost) || 0),
+      unit_cost: item.unit_cost !== undefined ? Number(item.unit_cost) || 0 : Number(item.cost) || 0,
+      cost: Number(item.machine_cost || 0) + Number(item.installation_cost || 0) + Number(item.other_capital_cost || 0)
+        || Number(item.total_cost) || Number(item.cost) || (Number(item.quantity) || 1) * (Number(item.unit_cost) || Number(item.cost) || 0),
+      machine_cost: item.machine_cost !== undefined
+        ? Number(item.machine_cost) || 0
+        : Number(item.cost) || (Number(item.quantity) || 1) * (Number(item.unit_cost) || 0),
+      installation_cost: Number(item.installation_cost) || 0,
+      other_capital_cost: Number(item.other_capital_cost) || 0,
+      total_cost: Number(item.machine_cost || 0) + Number(item.installation_cost || 0) + Number(item.other_capital_cost || 0)
+        || Number(item.total_cost) || Number(item.cost) || (Number(item.quantity) || 1) * (Number(item.unit_cost) || 0),
       purchase_date: item.purchase_date ?? "",
       supplier_name: item.supplier_name ?? "",
       supplier_city: item.supplier_city ?? "",
@@ -174,22 +184,6 @@ export interface ProjectReportInputs {
   };
   dpr: {
     // ── Production parameters (generic names — work for all industries) ──
-    working_days_per_year:      number;
-    hours_of_operation:         number;
-    // Input quantity (kg/unit/litre per day at 100% capacity)
-    fresh_leaves_per_day_kg:    number;   // generic: input qty per day
-    input_qty_per_day:          number;   // alias — same field, preferred name
-    // Yield / output
-    yield_rate_pct:             number;   // output as % of input (100 = no loss)
-    // Pricing
-    selling_price_per_kg:       number;   // generic: selling price per output unit
-    selling_price_per_unit:     number;   // alias — same field
-    // Raw material cost per INPUT unit
-    cost_fresh_leaves_per_kg:   number;   // generic: RM cost per input unit
-    raw_material_cost_per_unit: number;   // alias — same field, preferred name
-    // Additional cost components (optional — used in detailed PDF sections)
-    cost_consumables_per_kg:    number;   // consumables / processing cost per unit
-    cost_pet_bottle:            number;   // packaging / packing cost per unit
     // ── Loan & financing ─────────────────────────────────────────────────
     term_loan_pct:              number;   // % of fixed capital financed by TL
     promoter_equity_pct:        number;   // % of project cost from promoter
@@ -515,6 +509,7 @@ export interface GTABFormData {
   existing_monthly_emi: number;
   business_entity_name: string;
   type_of_business: string;
+  business_activity_other?: string;
   industry_type: GTABIndustryType;
   industry_other: string;
   loan_scheme: GTABLoanScheme;
@@ -659,6 +654,7 @@ export const INITIAL_FORM_DATA: GTABFormData = {
   existing_monthly_emi: 0,
   business_entity_name: '',
   type_of_business: 'food_processing',
+  business_activity_other: '',
   industry_type: 'manufacturing',
   industry_other: '',
   loan_scheme: 'mudra_kishor',

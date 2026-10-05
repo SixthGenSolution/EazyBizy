@@ -2,22 +2,11 @@ import { Layers3, Lightbulb } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { GTABFormData } from "@/types/gtab";
 import { buildWdvDepreciationSchedule } from "@/lib/wdvDepreciation";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface DepreciationScheduleStepProps {
   formData: GTABFormData;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
@@ -31,7 +20,7 @@ const DepreciationScheduleStep = ({ formData }: DepreciationScheduleStepProps) =
       <SectionTitle
         icon={Layers3}
         title="Depreciation Schedule (WDV Method)"
-        subtitle="Auto-calculated from your Capital Expenditure (Step 4) and depreciation rates (Step 8) — nothing to enter here."
+        subtitle="Auto-calculated from your Capital Expenditure (Step 7) and depreciation rates — nothing to enter here."
       />
 
       <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 space-y-1">
@@ -46,7 +35,7 @@ const DepreciationScheduleStep = ({ formData }: DepreciationScheduleStepProps) =
       {!hasAssets ? (
         <Card>
           <CardContent className="p-6 text-sm text-muted-foreground">
-            No capital expenditure entered yet in Step 4 — the depreciation schedule will appear here automatically once building, machinery,
+            No capital expenditure entered yet in Step 7 — the depreciation schedule will appear here automatically once building, machinery,
             or other fixed-asset costs are added.
           </CardContent>
         </Card>

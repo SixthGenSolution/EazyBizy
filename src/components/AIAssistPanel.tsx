@@ -1,5 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Sparkles, X, Send, User, Copy, CheckCheck } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import {
+  Sparkles,
+  X,
+  Send,
+  User,
+  Copy,
+  CheckCheck,
+  BarChart3,
+  Plus,
+  Trash2,
+  PieChart,
+  Circle,
+} from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -13,6 +26,7 @@ interface AIAssistBadgeProps {
   fieldLabel?: string;
   tooltip?: string;
   variant?: "default" | "inline";
+  showDataChart?: boolean;
   onApply?: (text: string) => void;
 }
 
@@ -22,16 +36,114 @@ interface AssistPanelProps {
   onApply?: (text: string) => void;
 }
 
+type ChartType = "bar" | "pie" | "donut";
+
+type ChartRow = Record<string, string>;
+
+interface ChartState {
+  columns: string[];
+  rows: ChartRow[];
+  chartType: ChartType;
+}
+
 const DEFAULT_FIELD_LABEL = "this field";
 const QUICK_PROMPTS = ["Write a sample", "Make it formal", "Make it shorter", "Give me tips"];
+const DATA_CHART_STORAGE_PREFIX = "eazybizy_data_chart_";
 
 const getWelcomeMessage = (fieldLabel: string): Message => ({
   role: "assistant",
   text: `Hi! I'm here to help you fill in **${fieldLabel}**.\n\nClick a quick option below or type your question!`,
 });
 
-// Stub AI response; replace this function body with a real API call later.
-async function getAIResponse(fieldLabel: string, messages: Message[]): Promise<string> {
+const getChartStorageKey = (fieldLabel: string) =>
+  `${DATA_CHART_STORAGE_PREFIX}${fieldLabel
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "field"}`;
+
+const createEmptyRow = (columns: string[]): ChartRow =>
+  columns.reduce<ChartRow>((acc, column) => {
+    acc[column] = "";
+    return acc;
+  }, {});
+
+const getDefaultChartData = (): ChartState => ({
+  columns: ["Month", "Revenue", "Expenses", "Profit"],
+  rows: [
+    { Month: "Jan", Revenue: "50000", Expenses: "30000", Profit: "20000" },
+    { Month: "Feb", Revenue: "65000", Expenses: "40000", Profit: "25000" },
+    { Month: "Mar", Revenue: "80000", Expenses: "50000", Profit: "30000" },
+    { Month: "Apr", Revenue: "95000", Expenses: "60000", Profit: "35000" },
+  ],
+  chartType: "bar",
+});
+
+const normalizeChartData = (value: unknown, fallback: ChartState): ChartState => {
+  if (!value || typeof value !== "object") return fallback;
+
+  const candidate = value as Partial<ChartState>;
+  const columns =
+    Array.isArray(candidate.columns) && candidate.columns.length
+      ? candidate.columns.map(String)
+      : fallback.columns;
+
+  const rows =
+    Array.isArray(candidate.rows) && candidate.rows.length
+      ? candidate.rows.map((row) => {
+          const normalized: ChartRow = {};
+          columns.forEach((column) => {
+            normalized[column] =
+              row && typeof row === "object" && column in row
+                ? String((row as Record<string, unknown>)[column] ?? "")
+                : "";
+          });
+          return normalized;
+        })
+      : [createEmptyRow(columns)];
+
+  return {
+    columns,
+    rows,
+    chartType: candidate.chartType === "pie" || candidate.chartType === "donut" ? candidate.chartType : "bar",
+  };
+};
+
+const readSavedChartData = (fieldLabel: string): ChartState => {
+  if (typeof window === "undefined") return getDefaultChartData();
+
+  try {
+    const raw = window.localStorage.getItem(getChartStorageKey(fieldLabel));
+    if (!raw) return getDefaultChartData();
+
+    return normalizeChartData(JSON.parse(raw), getDefaultChartData());
+  } catch {
+    return getDefaultChartData();
+  }
+};
+
+const getChartSeriesData = (data: ChartState) => {
+  if (!data.columns.length || !data.rows.length) {
+    return { labels: ["No data"], values: [0], seriesName: "Value" };
+  }
+
+  const labelColumn = data.columns[0];
+  const valueColumns = data.columns.filter((column) => column !== labelColumn);
+  const primaryColumn = valueColumns[0] || labelColumn;
+
+  const labels = data.rows.map((row, index) => String(row[labelColumn] || `Row ${index + 1}`));
+  const values = data.rows.map((row) => {
+    const numeric = Number(String(row[primaryColumn] ?? "0").replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(numeric) ? numeric : 0;
+  });
+
+  return {
+    labels,
+    values,
+    seriesName: primaryColumn,
+  };
+};
+
+const getAIResponse = async (fieldLabel: string, messages: Message[]): Promise<string> => {
   await new Promise((resolve) => setTimeout(resolve, 900));
 
   const lastMsg = messages[messages.length - 1]?.text?.toLowerCase() || "";
@@ -126,7 +238,7 @@ async function getAIResponse(fieldLabel: string, messages: Message[]): Promise<s
   }
 
   return `I can help you fill in **${fieldLabel}** with professional, bank-ready content.\n\nTry asking:\n- **"Write a sample"** and I'll draft a complete example\n- **"Make it formal"** for a professional tone\n- **"Make it shorter"** for a concise version\n\nWhat would you like?`;
-}
+};
 
 const cleanMessageText = (text: string) =>
   text
@@ -434,30 +546,463 @@ const AssistPanel = ({ fieldLabel, onClose, onApply }: AssistPanelProps) => {
   );
 };
 
+const formatCellValue = (value: string) => {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return "";
+
+  const numeric = Number(trimmed.replace(/,/g, ""));
+  if (Number.isFinite(numeric)) {
+    return numeric.toLocaleString("en-IN");
+  }
+
+  return trimmed;
+};
+
+const DataChartModal = memo(({ fieldLabel, onClose }: { fieldLabel: string; onClose: () => void }) => {
+  const [data, setData] = useState<ChartState>(() => readSavedChartData(fieldLabel));
+
+  useEffect(() => {
+    setData(readSavedChartData(fieldLabel));
+  }, [fieldLabel]);
+
+  const totalRows = data.rows.length;
+  const totalColumns = data.columns.length;
+
+  const addRow = () => {
+    setData((current) => ({
+      ...current,
+      rows: [...current.rows, createEmptyRow(current.columns)],
+    }));
+  };
+
+  const addColumn = () => {
+    setData((current) => {
+      const nextColumnName = `Column ${current.columns.length + 1}`;
+      return {
+        ...current,
+        columns: [...current.columns, nextColumnName],
+        rows: current.rows.map((row) => ({ ...row, [nextColumnName]: "" })),
+      };
+    });
+  };
+
+  const deleteRow = (rowIndex: number) => {
+    if (data.rows.length <= 1) return;
+    setData((current) => ({
+      ...current,
+      rows: current.rows.filter((_, index) => index !== rowIndex),
+    }));
+  };
+
+  const deleteLastRow = () => deleteRow(data.rows.length - 1);
+
+  const deleteColumn = (columnIndex: number) => {
+    if (data.columns.length <= 1) return;
+    setData((current) => {
+      const nextColumns = current.columns.filter((_, index) => index !== columnIndex);
+      return {
+        ...current,
+        columns: nextColumns,
+        rows: current.rows.map((row) => {
+          const nextRow: ChartRow = {};
+          nextColumns.forEach((column) => {
+            nextRow[column] = row[column] ?? "";
+          });
+          return nextRow;
+        }),
+      };
+    });
+  };
+
+  const updateRowCell = (rowIndex: number, column: string, value: string) => {
+    setData((current) => ({
+      ...current,
+      rows: current.rows.map((row, index) =>
+        index === rowIndex ? { ...row, [column]: value } : row,
+      ),
+    }));
+  };
+
+  const handleSave = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(getChartStorageKey(fieldLabel), JSON.stringify(data));
+    }
+    onClose();
+  };
+
+  const chartPreview = useMemo(() => getChartSeriesData(data), [data]);
+  const chartData = useMemo(() => {
+    const chartPalette = ["#2dd4bf", "#8b5cf6", "#fbbf24", "#60a5fa", "#34d399", "#f472b6"];
+    const series = data.columns.slice(1).map((column, seriesIndex) => ({
+      name: column,
+      values: data.rows.map((row) => Number(String(row[column] ?? "0").replace(/[^0-9.-]/g, "")) || 0),
+      color: chartPalette[seriesIndex % chartPalette.length],
+    }));
+    const maxValue = Math.max(...series.flatMap((item) => item.values), 1);
+    const legendEntries = series.map((item) => ({ label: item.name, color: item.color }));
+    const pieSegments = chartPreview.values.reduce<{ start: number; end: number; color: string }[]>(
+      (acc, value, index) => {
+        const safeValue = Number.isFinite(value) ? value : 0;
+        const total = chartPreview.values.reduce((sum, item) => sum + (Number.isFinite(item) ? item : 0), 0) || 1;
+        const start = acc.length ? acc[acc.length - 1].end : 0;
+        const end = start + (safeValue / total) * 100;
+        acc.push({ start, end, color: chartPalette[index % chartPalette.length] });
+        return acc;
+      },
+      [],
+    );
+
+    return { chartPalette, maxValue, legendEntries, multiSeries: series, pieSegments };
+  }, [chartPreview, data]);
+  const { chartPalette, maxValue, legendEntries, multiSeries, pieSegments } = chartData;
+
+  const pieGradient = pieSegments.length
+    ? pieSegments.map((segment) => `${segment.color} ${segment.start}% ${segment.end}%`).join(", ")
+    : "#2dd4bf 0% 100%";
+
+  const chartBody = (() => {
+    if (data.chartType === "bar") {
+      const groupWidth = 58;
+      const barGap = 8;
+      const singleBarWidth = 12;
+      const chartWidth = 320;
+      const chartHeight = 200;
+
+      return (
+        <div className="mt-5">
+          <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-56 w-full">
+            {[0, 1, 2, 3].map((tick) => {
+              const y = 30 + tick * 42;
+              const value = (maxValue / 3) * (3 - tick);
+              return (
+                <g key={tick}>
+                  <line x1="38" x2="300" y1={y} y2={y} stroke="#334155" strokeDasharray="3 4" />
+                  <text x="0" y={y + 4} fill="#94a3b8" fontSize="10">
+                    {value.toLocaleString("en-IN")}
+                  </text>
+                </g>
+              );
+            })}
+
+            {chartPreview.labels.map((label, index) => {
+              const xBase = 52 + index * groupWidth;
+              return (
+                <g key={`${label}-${index}`}>
+                  {multiSeries.map((series, seriesIndex) => {
+                    const value = series.values[index] ?? 0;
+                    const barHeight = Math.max(12, (value / maxValue) * 120);
+                    const x = xBase + seriesIndex * (singleBarWidth + barGap);
+                    const y = 150 - barHeight;
+                    return (
+                      <rect
+                        key={`${label}-${series.name}`}
+                        x={x}
+                        y={y}
+                        width={singleBarWidth}
+                        height={barHeight}
+                        rx={4}
+                        fill={series.color}
+                      />
+                    );
+                  })}
+                  <text x={xBase + 12} y="172" fill="#cbd5e1" fontSize="10" textAnchor="middle">
+                    {label.length > 5 ? label.slice(0, 5) : label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
+            {legendEntries.map((entry) => (
+              <div key={entry.label} className="flex items-center gap-2 text-[10px] text-slate-300">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: entry.color }} />
+                {entry.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (data.chartType === "pie") {
+      return (
+        <div className="mt-5 flex flex-col items-center justify-center gap-4">
+          <div
+            className="relative flex h-44 w-44 items-center justify-center rounded-full border border-cyan-500/20 shadow-inner"
+            style={{ background: `conic-gradient(${pieGradient})` }}
+          >
+            <div className="h-20 w-20 rounded-full bg-slate-950/95" />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-300">
+            {legendEntries.map((entry) => (
+              <div key={entry.label} className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: entry.color }} />
+                {entry.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-5 flex flex-col items-center justify-center gap-4">
+        <div
+          className="relative flex h-44 w-44 items-center justify-center rounded-full border border-cyan-500/20 shadow-inner"
+          style={{ background: `conic-gradient(${pieGradient})` }}
+        >
+          <div className="absolute inset-[24%] rounded-full bg-slate-950/95" />
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-slate-300">
+          {legendEntries.map((entry) => (
+            <div key={entry.label} className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: entry.color }} />
+              {entry.label}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  })();
+
+  return (
+    <DialogPrimitive.Root open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[80] bg-black/50 pointer-events-auto" />
+        <DialogPrimitive.Content
+          className="fixed left-1/2 top-1/2 z-[90] w-[min(920px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[22px] border border-cyan-500/20 bg-[#091827] shadow-[0_30px_60px_rgba(2,6,23,0.72)] pointer-events-auto"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+        <div className="flex items-start justify-between border-b border-slate-700/70 bg-[#0d1d2f]/90 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <div>
+              <DialogPrimitive.Title className="text-base font-semibold text-white">Data & Chart</DialogPrimitive.Title>
+              <DialogPrimitive.Description className="text-[11px] text-slate-400">Add your data, choose a chart type and save it to this section.</DialogPrimitive.Description>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onClose();
+            }}
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/5"
+            aria-label="Close data and chart"
+          >
+            <X className="h-4 w-4 text-slate-300" />
+          </button>
+        </div>
+
+        <div className="grid gap-5 p-5 md:grid-cols-[1.6fr_0.9fr]">
+          <div className="overflow-hidden rounded-2xl border border-slate-700/80 bg-[#0b1522]/80">
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-700/80 bg-[#101f30]/80 p-3">
+              <button
+                type="button"
+                onClick={addRow}
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-200 hover:bg-cyan-500/15"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Row
+              </button>
+              <button
+                type="button"
+                onClick={deleteLastRow}
+                disabled={totalRows <= 1}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete Row
+              </button>
+              <button
+                type="button"
+                onClick={addColumn}
+                className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-200 hover:bg-cyan-500/15"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add Column
+              </button>
+
+              {data.columns.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => deleteColumn(totalColumns - 1)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/15"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete Column
+                </button>
+              )}
+            </div>
+
+            <div className="max-h-[500px] overflow-auto p-3">
+              <table className="min-w-full border-separate border-spacing-1 text-left text-xs">
+                <thead>
+                  <tr>
+                    {data.columns.map((column, columnIndex) => (
+                      <th key={columnIndex} className="min-w-[130px] rounded-xl bg-[#101c2c] p-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-full px-1 py-1 text-[11px] font-semibold text-slate-100">{column}</span>
+                          {data.columns.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => deleteColumn(columnIndex)}
+                              className="text-slate-400 hover:text-rose-300"
+                              aria-label={`Delete column ${columnIndex + 1}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((row, rowIndex) => (
+                    <tr key={`row-${rowIndex}`}>
+                      {data.columns.map((column, columnIndex) => (
+                        <td key={`${rowIndex}-${columnIndex}`} className="rounded-xl bg-[#101c2c] p-2">
+                          <input
+                            value={formatCellValue(row[column] ?? "")}
+                            onChange={(event) => updateRowCell(rowIndex, column, event.target.value)}
+                            className="w-full bg-transparent px-1 py-1 text-[11px] text-slate-100 outline-none placeholder:text-slate-500"
+                            placeholder="Enter value"
+                          />
+                        </td>
+                      ))}
+
+                      {data.rows.length > 1 && (
+                        <td className="w-9 rounded-xl bg-[#101c2c] p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => deleteRow(rowIndex)}
+                            className="text-slate-400 hover:text-rose-300"
+                            aria-label={`Delete row ${rowIndex + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-700/80 bg-[#0b1522]/80 p-4">
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-slate-100">Chart Type</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: "bar", label: "Bar Chart", icon: <BarChart3 className="h-4 w-4" /> },
+                { key: "pie", label: "Pie Chart", icon: <PieChart className="h-4 w-4" /> },
+                { key: "donut", label: "Ring Chart", icon: <Circle className="h-4 w-4" /> },
+              ].map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setData((current) => ({ ...current, chartType: option.key as ChartType }))}
+                  className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border px-2 py-2 text-[11px] font-medium transition-all ${
+                    data.chartType === option.key
+                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-100 shadow-inner"
+                      : "border-slate-700 bg-slate-800/90 text-slate-300 hover:bg-slate-700/80"
+                  }`}
+                >
+                  {option.icon}
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-700/80 bg-[#0e1b2e] p-3">
+              <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-slate-400">
+                <span>Preview</span>
+                <span>{data.chartType}</span>
+              </div>
+              {chartBody}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="rounded-xl border border-cyan-500/40 bg-cyan-500 px-4 py-2.5 text-sm font-medium text-slate-950 hover:bg-cyan-400"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+});
+DataChartModal.displayName = "DataChartModal";
+
 const AIAssistPanel = ({
   fieldLabel = DEFAULT_FIELD_LABEL,
   tooltip = "Get AI help for this field",
   variant = "default",
+  showDataChart = true,
   onApply,
 }: AIAssistBadgeProps) => {
   const [open, setOpen] = useState(false);
+  const [dataChartOpen, setDataChartOpen] = useState(false);
+  const closeDataChart = useCallback(() => setDataChartOpen(false), []);
 
   const trigger = (
-    <button
-      type="button"
-      aria-haspopup="dialog"
-      aria-expanded={open}
-      aria-label={`Open AI assist for ${fieldLabel}`}
-      onClick={() => setOpen(true)}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border transition-all hover:-translate-y-0.5 hover:shadow-sm",
-        "border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-        variant === "inline" ? "shrink-0 px-1.5 py-1 text-[10px] sm:px-2" : "px-2.5 py-1 text-[11px] font-medium",
+    <div className="inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={`Open AI assist for ${fieldLabel}`}
+        onClick={() => setOpen(true)}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border transition-all hover:-translate-y-0.5 hover:shadow-sm",
+          "border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+          variant === "inline" ? "shrink-0 px-1.5 py-1 text-[10px] sm:px-2" : "px-2.5 py-1 text-[11px] font-medium",
+        )}
+      >
+        <Sparkles className={cn("shrink-0", variant === "inline" ? "h-3 w-3" : "h-3.5 w-3.5")} />
+        <span>{variant === "inline" ? "AI" : "AI Assist"}</span>
+      </button>
+
+      {showDataChart && (
+        <button
+          type="button"
+          aria-label={`Open data and chart for ${fieldLabel}`}
+          onClick={() => setDataChartOpen(true)}
+          className={cn(
+            "inline-flex items-center justify-center rounded-full border border-cyan-500/30 bg-slate-900/80 text-cyan-300 transition-all hover:-translate-y-0.5 hover:shadow-sm",
+            variant === "inline" ? "h-5 w-5" : "h-7 w-7",
+          )}
+          title="Data & Chart"
+        >
+          <BarChart3 className={variant === "inline" ? "h-2.75 w-2.75" : "h-3.5 w-3.5"} />
+        </button>
       )}
-    >
-      <Sparkles className={cn("shrink-0", variant === "inline" ? "h-3 w-3" : "h-3.5 w-3.5")} />
-      <span>{variant === "inline" ? "AI" : "AI Assist"}</span>
-    </button>
+    </div>
   );
 
   return (
@@ -474,6 +1019,7 @@ const AIAssistPanel = ({
       )}
 
       {open && <AssistPanel fieldLabel={fieldLabel} onClose={() => setOpen(false)} onApply={onApply} />}
+      {showDataChart && dataChartOpen && <DataChartModal fieldLabel={fieldLabel} onClose={closeDataChart} />}
     </>
   );
 };

@@ -10,23 +10,12 @@ import { getAnnualWorkingCapital, getMonthlyWorkingCapital } from "@/lib/working
 import { getFinancingPlan } from "@/lib/projectReport";
 import { getStep8Tips } from "@/lib/caGuidance";
 import { numberToWords } from "@/lib/numberToWords";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface WorkingCapitalStepProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
 }
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
@@ -117,7 +106,7 @@ const WorkingCapitalStep = ({ formData, updateFormData }: WorkingCapitalStepProp
     `CA Norm for ${industryLabel}: WC ≈ ${wcNorm.months}× months of operating expenses. ${wcNorm.reason}.`,
     caWCSuggestion > 0
       ? `Using ${activeMultiplier}× multiplier (${activeOption?.tag ?? "Custom"}): ${fmt(totalMonthly)}/month × ${activeMultiplier} = ${fmt(caWCSuggestion)}.${userMultiplier && userMultiplier !== wcNorm.months ? ` (CA recommends ${wcNorm.months}× for ${industryLabel})` : ""}`
-      : "Fill Step 7 expenses to get an industry-calibrated WC auto-suggestion.",
+      : "Fill Step 9 expenses to get an industry-calibrated WC auto-suggestion.",
     `Bank funds ${Math.round(wcBankPct)}% of WC as Bank WC Loan (RBI/Nayak Committee turnover method — mandatory minimum 80% for MSE borrowers). You contribute ${100 - Math.round(wcBankPct)}% as Promoter Margin.`,
     ...(serviceFloatSuggestion ? [serviceFloatSuggestion] : []),
   ];
@@ -205,7 +194,7 @@ const WorkingCapitalStep = ({ formData, updateFormData }: WorkingCapitalStepProp
                 </button>
               </div>
             ) : (
-              <p className="text-xs text-teal-600 italic">Fill Step 7 (Operating Expenses) to see the auto-suggestion.</p>
+              <p className="text-xs text-teal-600 italic">Fill Step 9 (Operating Expenses) to see the auto-suggestion.</p>
             )}
           </div>
 

@@ -12,6 +12,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { MapPin, Phone, Building2, TrendingUp } from "lucide-react";
 
 import { GTABFormData, REGISTRATION_OPTIONS, INDIAN_STATES } from "@/types/gtab";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface BusinessInfoStepProps {
   formData: GTABFormData;
@@ -19,18 +20,6 @@ interface BusinessInfoStepProps {
 }
 
 const Req = () => <span className="ml-0.5 text-red-500">*</span>;
-
-const SectionTitle = ({ icon: Icon, title, subtitle }) => (
-  <div className="flex items-start gap-3">
-    <div className="bg-primary/10 p-2 rounded-xl">
-      <Icon className="w-5 h-5 text-primary" />
-    </div>
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  </div>
-);
 
 const BusinessInfoStep = ({ formData, updateFormData }: BusinessInfoStepProps) => {
   const pri = formData.project_report_inputs;
@@ -296,22 +285,6 @@ const BusinessInfoStep = ({ formData, updateFormData }: BusinessInfoStepProps) =
                 value={pri?.business?.market_growth_pct || ""}
                 onChange={(e) => updateBusiness({ market_growth_pct: Number(e.target.value) || 0 })}
                 min={0}
-              />
-            </div>
-            <div className="space-y-2 md:col-span-3">
-              <Label>Target Areas</Label>
-              <Input
-                className="h-12 rounded-xl"
-                value={(pri?.business?.target_areas || []).join(", ")}
-                onChange={(e) =>
-                  updateBusiness({
-                    target_areas: e.target.value
-                      .split(",")
-                      .map((item) => item.trim())
-                      .filter(Boolean),
-                  })
-                }
-                placeholder="Andheri, Borivali, Thane"
               />
             </div>
           </div>

@@ -2233,6 +2233,14 @@ const LoanManagementDashboard = () => {
             }`}
           >
             <div className={isDocumentsPage ? "max-w-4xl" : ""}>
+              <button
+                type="button"
+                onClick={handleBackToWelcome}
+                className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#00C2D1]/45 bg-[#0b2445] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#10305a]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Home
+              </button>
               <p className="text-xs uppercase tracking-[0.32em] text-slate-400">{headerEyebrow}</p>
               <h2 className="mt-2 break-words text-[1.95rem] font-semibold leading-tight text-white sm:text-4xl">{headerTitle}</h2>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">{headerDescription}</p>
@@ -2873,17 +2881,17 @@ const LoanManagementDashboard = () => {
 
           {isApplicationsPage ? (
           <section id="applications" className="grid gap-6">
-            <article className="overflow-hidden rounded-[2rem] border border-[#00C2D1]/18 bg-[linear-gradient(180deg,rgba(7,25,51,0.98),rgba(6,21,43,0.98))] p-4 shadow-[0_28px_100px_rgba(0,194,209,0.12)] ring-1 ring-white/5 sm:p-6">
+            <article className="overflow-hidden rounded-[2rem] border border-cyan-200/80 bg-white/95 p-4 shadow-[0_28px_100px_rgba(0,194,209,0.12)] ring-1 ring-cyan-100 sm:p-6">
               <div className="flex flex-col gap-6">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.34em] text-slate-400">Step 10 of 10</p>
-                    <h3 className="mt-3 break-words text-[1.95rem] font-semibold leading-tight text-white sm:text-[2.6rem]">Application Progress</h3>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                    <p className="text-xs uppercase tracking-[0.34em] text-cyan-700">Step 10 of 10</p>
+                    <h3 className="mt-3 break-words text-[1.95rem] font-semibold leading-tight text-slate-950 sm:text-[2.6rem]">Application Progress</h3>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
                       Track every stage of your loan application in one view.
                     </p>
                   </div>
-                  <div className="flex w-full max-w-full flex-col items-center gap-4 self-start rounded-[1.7rem] border border-[#d4af37]/14 bg-[#0d2a4b]/85 px-4 py-4 text-center sm:w-auto sm:flex-row sm:px-5">
+                  <div className="flex w-full max-w-full flex-col items-center gap-4 self-start rounded-[1.7rem] border border-cyan-200 bg-cyan-50/80 px-4 py-4 text-center sm:w-auto sm:flex-row sm:px-5">
                     <div className="relative flex h-[72px] w-[72px] items-center justify-center sm:h-[84px] sm:w-[84px]">
                       <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90">
                         <circle cx="60" cy="60" r="38" fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth="10" />
@@ -2902,7 +2910,7 @@ const LoanManagementDashboard = () => {
                     </div>
                     <div className="min-w-0">
                       <p className="text-4xl font-semibold leading-none text-[#55e1ff] sm:text-5xl">{applicationProgressPercent}%</p>
-                      <p className="mt-2 text-lg text-slate-300 sm:text-xl">Complete</p>
+                      <p className="mt-2 text-lg text-slate-600 sm:text-xl">Complete</p>
                     </div>
                   </div>
                 </div>
@@ -2915,9 +2923,9 @@ const LoanManagementDashboard = () => {
                     return (
                       <article
                         key={step.step}
-                        className={`group relative flex min-h-[250px] flex-col items-center overflow-hidden rounded-[1.65rem] border px-4 py-5 text-center transition-all duration-300 ease-out [transform-style:preserve-3d] will-change-transform hover:-translate-y-2.5 hover:[transform:perspective(900px)_rotateX(6deg)_scale(1.035)] sm:min-h-[300px] ${
+                        className={`group relative flex min-h-[250px] flex-col items-center overflow-hidden rounded-[1.65rem] border px-4 py-5 text-center transition-all duration-300 ease-out [transform-style:preserve-3d] will-change-transform hover:-translate-y-2.5 hover:[transform:perspective(900px)_rotateX(6deg)_scale(1.035)] sm:min-h-[300px] 2xl:px-2 ${
                           isCompleted
-                            ? "border-[#2fd0e8]/25 bg-[linear-gradient(155deg,rgba(18,60,94,0.92),rgba(9,36,64,0.94))] shadow-[0_18px_40px_-12px_rgba(0,194,209,0.28)] hover:shadow-[0_38px_74px_-18px_rgba(0,194,209,0.55)]"
+                            ? "border-cyan-200 bg-[linear-gradient(155deg,rgba(255,255,255,0.98),rgba(236,254,255,0.96))] shadow-[0_18px_40px_-12px_rgba(0,194,209,0.28)] hover:shadow-[0_38px_74px_-18px_rgba(0,194,209,0.55)]"
                             : "border-[#f5d778]/45 bg-[linear-gradient(155deg,rgba(24,66,98,0.96),rgba(13,46,80,0.96))] shadow-[0_20px_48px_-12px_rgba(212,175,55,0.34)] ring-1 ring-[#f5d778]/20 hover:shadow-[0_42px_82px_-18px_rgba(212,175,55,0.5)]"
                         }`}
                       >
@@ -2935,10 +2943,16 @@ const LoanManagementDashboard = () => {
                         }`}>
                           {isCompleted ? <Check className="h-6 w-6" /> : step.step}
                         </div>
-                        <p className="relative mt-5 text-base font-semibold text-white sm:mt-6 sm:text-lg">Step {step.step}</p>
-                        <p className="relative mt-3 text-base leading-7 text-slate-100 sm:text-[1.05rem] sm:leading-9">{step.title}</p>
-                        <p className="relative mt-auto break-words pt-6 text-xs text-slate-400 sm:pt-8 sm:text-sm">{step.timestamp}</p>
-                        <div className={`relative mt-6 inline-flex rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] ${isCompleted ? "border-[#2cd39f]/30 bg-[#123f3c] text-[#8ff0c5]" : "border-[#f5d778]/40 bg-[#3a2f12] text-[#f7e39c]"}`}>
+                        <p className="relative mt-5 w-full text-base font-semibold text-slate-950 sm:mt-6 sm:text-lg">Step {step.step}</p>
+                        <p className="relative mt-3 w-full max-w-[10rem] text-base leading-7 tracking-tight text-slate-700 [overflow-wrap:normal] [word-break:normal] sm:text-[1.05rem] sm:leading-9 2xl:text-[0.95rem] 2xl:leading-8">
+                          {step.title.split(" ").map((word, index) => (
+                            <span key={`${word}-${index}`} className="mr-1 inline-block whitespace-nowrap last:mr-0">
+                              {word}
+                            </span>
+                          ))}
+                        </p>
+                        <p className="relative mt-auto w-full whitespace-normal pt-6 text-xs leading-5 text-slate-500 [overflow-wrap:normal] [word-break:normal] sm:pt-8 sm:text-sm">{step.timestamp}</p>
+                        <div className={`relative mt-6 inline-flex min-h-[36px] items-center justify-center rounded-full border px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.2em] ${isCompleted ? "border-[#2cd39f]/30 bg-[#123f3c] text-[#8ff0c5]" : "border-[#f5d778]/40 bg-[#3a2f12] text-[#f7e39c]"}`}>
                           {isCompleted ? "Completed" : "In Progress"}
                         </div>
                       </article>
@@ -2969,13 +2983,13 @@ const LoanManagementDashboard = () => {
                       value: "2-4 mins",
                     },
                   ].map((item) => (
-                    <div key={item.label} className="flex min-h-[132px] flex-col justify-between rounded-[1.55rem] border border-[#d4af37]/12 bg-[#091d37]/88 px-5 py-5">
-                      <p className="text-sm text-slate-400">{item.label}</p>
-                      <p className="text-[1.05rem] font-semibold leading-8 text-white">{item.value}</p>
+                    <div key={item.label} className="flex min-h-[132px] flex-col justify-between rounded-[1.55rem] border border-cyan-200 bg-cyan-50/45 px-5 py-5">
+                      <p className="text-sm text-cyan-800">{item.label}</p>
+                      <p className="text-[1.05rem] font-semibold leading-8 text-slate-950">{item.value}</p>
                     </div>
                   ))}
-                  <div className="flex min-h-[132px] flex-col justify-between rounded-[1.55rem] border border-[#d4af37]/12 bg-[#091d37]/88 px-5 py-5">
-                    <p className="text-sm text-slate-400">Continue</p>
+                  <div className="flex min-h-[132px] flex-col justify-between rounded-[1.55rem] border border-cyan-200 bg-cyan-50/45 px-5 py-5">
+                    <p className="text-sm text-cyan-800">Continue</p>
                     <button
                       type="button"
                       onClick={() => latestSavedApplication ? handleOpenApplication(latestSavedApplication.id) : handleNewApplication()}
@@ -2987,11 +3001,11 @@ const LoanManagementDashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-4 rounded-[1.6rem] border border-[#d4af37]/12 bg-[#081a31]/92 px-4 py-5 sm:px-5">
+                <div className="flex items-start gap-4 rounded-[1.6rem] border border-cyan-200 bg-cyan-50/70 px-4 py-5 sm:px-5">
                   <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1.15rem] border border-[#35d2e8]/25 bg-[#10334e] text-[#9becff]">
                     <CheckCheck className="h-6 w-6" />
                   </div>
-                  <p className="text-base leading-7 text-slate-100 sm:text-lg">
+                  <p className="text-base leading-7 text-slate-800 sm:text-lg">
                     Keep going - complete the remaining steps to submit your application.
                   </p>
                 </div>

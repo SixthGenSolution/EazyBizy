@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from fastapi.testclient import TestClient
 from main import app
 from pypdf import PdfReader
+from pypdf.generic import ContentStream
 import io
 
 client = TestClient(app)
@@ -65,6 +66,48 @@ def _download_pdf_text(report_id: str) -> str:
     assert dl.status_code == 200
     reader = PdfReader(io.BytesIO(dl.content))
     return "\n".join(page.extract_text() for page in reader.pages)
+
+
+class TestReportCustomization:
+    def test_custom_theme_prepared_by_and_bank_reach_generated_pdf(self):
+        payload = _cgtmse_payload()
+        payload["prepared_by"] = "A. Banker"
+        payload["report_theme"] = "Teal"
+        payload["business"]["bank_name"] = "State Bank of India (SBI)"
+        payload["to_bank"] = "Kotak Mahindra Bank"
+
+        response = client.post("/api/v1/report/generate", json=payload)
+        assert response.status_code == 200, response.text
+        report_id = response.json()["report_id"]
+        download = client.get(f"/api/v1/report/{report_id}/download")
+        assert download.status_code == 200
+
+        reader = PdfReader(io.BytesIO(download.content))
+        report_text = "\n".join(page.extract_text() for page in reader.pages)
+        normalized_text = " ".join(report_text.split())
+        assert "Prepared By" in normalized_text
+        assert "A. Banker" in report_text
+        assert "To" in normalized_text
+        assert "Kotak Mahindra Bank" in normalized_text
+        assert "Preferred Bank" in normalized_text
+        assert "State Bank of India (SBI)" in normalized_text
+        assert (
+            "CGTMSE Cover: guarantee fee applicable | Collateral/Security: subject to CGTMSE eligibility, "
+            "guarantee cover limits and lender policy — to be confirmed by the financing bank"
+        ) in normalized_text
+
+        expected_colors = ((15 / 255, 118 / 255, 110 / 255), (13 / 255, 148 / 255, 136 / 255))
+        found_colors = set()
+        for page in reader.pages:
+            content = ContentStream(page.get_contents(), reader)
+            for operands, operator in content.operations:
+                if operator not in (b"rg", b"RG") or len(operands) < 3:
+                    continue
+                rgb = tuple(float(channel) for channel in operands[:3])
+                for expected in expected_colors:
+                    if all(abs(actual - target) < 0.001 for actual, target in zip(rgb, expected)):
+                        found_colors.add(expected)
+        assert found_colors == set(expected_colors), "Selected Teal cover and section accents were not applied"
 
 
 class TestCgtmseMoratoriumOverride:

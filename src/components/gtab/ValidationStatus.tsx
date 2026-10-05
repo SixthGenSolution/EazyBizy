@@ -137,8 +137,8 @@ function buildImprovementActions(formData: GTABFormData | undefined, validation:
     actions.push({
       points: 5, priority: "important",
       issue: "Working Capital = ₹0. Every business needs working capital to buy stock, pay salaries and run day-to-day operations.",
-      fix: "Step 7 → Working Capital → Enter your monthly working capital need (typically 1.5× monthly expenses).",
-      step: 7, stepLabel: "Step 7 → Working Capital",
+      fix: "Step 6 → Working Capital → Enter your monthly working capital need (typically 1.5× monthly expenses).",
+      step: 6, stepLabel: "Step 6 → Working Capital",
     });
   }
 
@@ -149,8 +149,8 @@ function buildImprovementActions(formData: GTABFormData | undefined, validation:
     actions.push({
       points: 5, priority: "critical",
       issue: `${totalEmp} employees listed but monthly salary = ₹0. Report will show incorrect P&L.`,
-      fix: "Step 6 → Monthly Expenses → Enter salary for each worker category (skilled/semi-skilled/wages).",
-      step: 6, stepLabel: "Step 6 → Monthly Expenses", section: "Salary Section",
+      fix: "Step 9 → Monthly Expenses → Enter salary for each worker category (skilled/semi-skilled/wages).",
+      step: 9, stepLabel: "Step 9 → Monthly Expenses", section: "Salary Section",
     });
   }
 

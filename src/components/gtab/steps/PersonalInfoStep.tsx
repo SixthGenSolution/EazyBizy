@@ -16,31 +16,20 @@ import {
   EDUCATION_OPTIONS,
   SOCIAL_CATEGORY_OPTIONS,
 } from "@/types/gtab";
+import SectionTitle from "@/components/gtab/SectionTitle";
 
 interface PersonalInfoStepProps {
   formData: GTABFormData;
   updateFormData: (updates: Partial<GTABFormData>) => void;
 }
 
-const SectionTitle = ({ icon: Icon, title, subtitle }: { icon: any; title: string; subtitle: string }) => (
-  <div className="flex items-start gap-3 sm:gap-4">
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.9rem] bg-[#00C2D1]/12 text-[#37DED6] sm:h-12 sm:w-12">
-      <Icon className="h-5 w-5" />
-    </div>
-    <div className="min-w-0">
-      <h3 className="text-[1.05rem] font-bold leading-tight text-slate-100 sm:text-lg">{title}</h3>
-      <p className="mt-1 text-sm leading-5 text-slate-400">{subtitle}</p>
-    </div>
-  </div>
-);
-
 const FieldLabel = ({ children, required }: { children: React.ReactNode; required?: boolean }) => (
-  <Label className="text-sm font-semibold text-slate-100">
+  <Label className="text-sm font-semibold text-slate-800">
     {children}{required && <span className="ml-1 text-red-400">*</span>}
   </Label>
 );
 
-const fieldCls = "h-12 rounded-[0.9rem] border-white/15 bg-[#080d17] px-4 text-base text-slate-100 placeholder:text-slate-500 focus-visible:ring-0 transition-none";
+const fieldCls = "h-11 rounded-lg border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:ring-0 transition-none";
 
 const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) => {
   const pri = formData.project_report_inputs;
@@ -58,7 +47,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
     <div className="mx-auto max-w-none space-y-4 sm:space-y-6">
 
       {/* ── Owner Name Card ────────────────────────────────────────────────── */}
-      <Card className="gtab-card-dark overflow-hidden rounded-[1rem] border border-[#163149] bg-[#111827] text-slate-100 shadow-[0_18px_44px_rgba(0,0,0,0.24)] sm:rounded-2xl">
+      <Card className="gtab-card-light overflow-hidden rounded-[0.85rem] border border-slate-200 bg-white text-slate-900 shadow-[0_8px_22px_rgba(15,23,42,0.10)] sm:rounded-xl">
         <CardContent className="space-y-5 p-5 sm:space-y-7 sm:p-8">
 
           <SectionTitle icon={User} title="Owner / Promoter Name" subtitle="Full legal name as per Aadhaar / PAN" />
@@ -116,8 +105,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
             <div className="space-y-2">
               <FieldLabel required>Date of Birth</FieldLabel>
               <DatePicker
-                dark
-                className="h-12 rounded-[0.9rem] px-4 text-base"
+                className="h-11 rounded-lg border-slate-300 bg-white px-4 text-sm text-slate-900 shadow-sm transition-colors hover:border-slate-400 hover:bg-white focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-100 [&>svg]:text-[#1769d1]"
                 value={pri?.promoter?.date_of_birth || ""}
                 onChange={(v) => updatePromoter({ date_of_birth: v })}
                 placeholder="Select date of birth"
@@ -128,7 +116,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
             </div>
           </div>
 
-          <div className="border-t border-[#1c3a42]" />
+          <div className="border-t border-slate-200" />
 
           {/* Gender / Education / Social Category */}
           <SectionTitle icon={GraduationCap} title="Personal Details" subtitle="Demographic and educational information" />
@@ -192,7 +180,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
       </Card>
 
       {/* ── KYC Card ──────────────────────────────────────────────────────── */}
-      <Card className="gtab-card-dark overflow-hidden rounded-[1rem] border border-[#163149] bg-[#111827] text-slate-100 shadow-[0_18px_44px_rgba(0,0,0,0.24)] sm:rounded-2xl">
+      <Card className="gtab-card-light overflow-hidden rounded-[0.85rem] border border-slate-200 bg-white text-slate-900 shadow-[0_8px_22px_rgba(15,23,42,0.10)] sm:rounded-xl">
         <CardContent className="space-y-5 p-5 sm:space-y-7 sm:p-8">
 
           <SectionTitle
@@ -218,9 +206,9 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
             </div>
           </div>
 
-          <div className="rounded-[0.8rem] border border-[#00C2D1]/20 bg-[#00C2D1]/8 px-4 py-3">
-            <p className="text-xs leading-5 text-slate-300">
-              <span className="font-semibold text-[#7BE7F0]">Demo data pre-filled.</span>{" "}
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-xs leading-5 text-slate-600">
+              <span className="font-semibold text-blue-700">Demo data pre-filled.</span>{" "}
               Replace PAN with your actual details before submitting to the bank.
               This field auto-populates Section A of your project report.
             </p>
@@ -230,7 +218,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
       </Card>
 
       {/* ── Previous Employment Card ──────────────────────────────────────── */}
-      <Card className="gtab-card-dark overflow-hidden rounded-[1rem] border border-[#163149] bg-[#111827] text-slate-100 shadow-[0_18px_44px_rgba(0,0,0,0.24)] sm:rounded-2xl">
+      <Card className="gtab-card-light overflow-hidden rounded-[0.85rem] border border-slate-200 bg-white text-slate-900 shadow-[0_8px_22px_rgba(15,23,42,0.10)] sm:rounded-xl">
         <CardContent className="space-y-5 p-5 sm:space-y-7 sm:p-8">
 
           <SectionTitle
@@ -259,8 +247,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
             <div className="space-y-2">
               <FieldLabel>Employment From</FieldLabel>
               <DatePicker
-                dark
-                className="h-12 rounded-[0.9rem] px-4 text-base"
+                className="h-11 rounded-lg border-slate-300 bg-white px-4 text-sm text-slate-900 shadow-sm transition-colors hover:border-slate-400 hover:bg-white focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-100 [&>svg]:text-[#1769d1]"
                 value={pri?.promoter?.employment_from || ""}
                 onChange={(v) => updatePromoter({ employment_from: v })}
                 placeholder="Start date"
@@ -271,8 +258,7 @@ const PersonalInfoStep = ({ formData, updateFormData }: PersonalInfoStepProps) =
             <div className="space-y-2">
               <FieldLabel>Employment To</FieldLabel>
               <DatePicker
-                dark
-                className="h-12 rounded-[0.9rem] px-4 text-base"
+                className="h-11 rounded-lg border-slate-300 bg-white px-4 text-sm text-slate-900 shadow-sm transition-colors hover:border-slate-400 hover:bg-white focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-100 [&>svg]:text-[#1769d1]"
                 value={pri?.promoter?.employment_to || ""}
                 onChange={(v) => updatePromoter({ employment_to: v })}
                 placeholder="End date"

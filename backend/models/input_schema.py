@@ -9,7 +9,7 @@ They sit alongside the flat MasterInput in main_master.py without replacing it.
 
 from __future__ import annotations
 from enum import Enum
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -278,6 +278,9 @@ class CMAReportInput(BaseModel):
       promoter_net_worth.*   → Section Q (bank credit assessment)
     """
     scheme:               SchemeType          = Field(default=SchemeType.PMEGP)
+    prepared_by:          str                 = Field(default="", description="Name shown in the report Prepared By field")
+    report_theme:         Literal["Navy", "Teal", "Royal Blue", "Burgundy", "Forest Green", "Charcoal"] = Field(default="Navy")
+    to_bank:              str                 = Field(default="", description="Report recipient selected in the customization dialog")
     loan_purpose:         str                 = Field(default="term_loan")
     applicant:            ApplicantInfo        = Field(default_factory=ApplicantInfo)
     business:             BusinessInfo         = Field(default_factory=BusinessInfo)
