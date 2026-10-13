@@ -51,7 +51,7 @@ from reportlab.platypus import (
 )
 from datetime import datetime
 from contextvars import ContextVar
-from core.engine import dscr_label, R, validate_cma_dpr
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, dscr_label, R, validate_cma_dpr
 from calculations.validator import structural_reconciliation, StructuralReconciliationError
 
 # ── Scheme name resolver (for display in PDF) ─────────────────────────────────
@@ -414,16 +414,14 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     _prepared_by  = str(inp.get("prepared_by", "") or "").strip()
     ref_no = f"CMA/{_scheme_short}/{datetime.now().strftime('%Y%m')}/{str(abs(hash(inp.get('entrepreneur_name','X'))))[:6]}"
 
-    # Single source of truth for "100%-capacity revenue" per year — it is NOT
-    # constant across years (it grows with the revenue-escalation assumption,
-    # independently of the capacity ramp-up), so both Section-D and Section
-    # 14 must read this SAME computed list rather than each restating (or, as
-    # Section-J previously did, flatly repeating) a Year-1-only figure.
+    # The full-capacity baseline is fixed at the Year 1 revenue implied by the
+    # submitted inputs; each year's projected revenue applies only utilization.
     _rev100_by_year = []
-    for _cy in cop:
-        _cap_pct = float(_cy.get("capacity", 0) or 0)
-        _cy_rev  = float(_cy.get("revenue", 0) or 0)
-        _rev100_by_year.append(R(_cy_rev / _cap_pct, 2) if _cap_pct else _cy_rev)
+    if cop:
+        _y1_capacity = float(cop[0].get("capacity", 0) or 0)
+        _y1_revenue = float(cop[0].get("revenue", 0) or 0)
+        _year1_full_capacity_revenue = R(_y1_revenue / _y1_capacity, 2) if _y1_capacity else _y1_revenue
+        _rev100_by_year = [_year1_full_capacity_revenue] * len(cop)
 
     # WC Bank Finance Coverage (mislabeled "Current Ratio" in earlier drafts):
     # it is WC Requirement ÷ WC Bank Finance — how many times the assessed WC
@@ -640,6 +638,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     story.append(snap)
     NL(story, 5)
 
+    _financial_snapshot_story_start = len(story)
     H2("Financial Snapshot (Year 1 → Year 5)", story)
     fin_snap = Table(
         [["Metric"] + [f"Year {i+1}" for i in range(5)]] +
@@ -663,6 +662,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
         f"<b>Payback Period (cumulative cash-flow, Section-N):</b> " + ("Not achievable under current projections" if (cma.get("payback_not_achievable") or str(cma.get("breakeven_months","")).upper()=="N/A" or float(cma.get("breakeven_months",0) if isinstance(cma.get("breakeven_months"),(int,float)) else 0)==0) else f"within {round(float(cma.get('breakeven_months',0)),1)} months"),
         ST["small"]))
     NL(story, 5)
+    del story[_financial_snapshot_story_start:]
 
     H2("Credit Assessment", story)
     _obs_dscr_bench   = float(cma.get("dscr_benchmark", 1.25) or 1.25)
@@ -895,7 +895,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
         ["Business Model",      Paragraph(_industry_str + (f" | {_nature_biz}" if _nature_biz else ""), ST["table_cell"])],
         ["Location",             location_district(inp)],
         ["Area Type",            inp.get("area_type", "Rural")],
-        ["Capacity Schedule (Y1-Y5)", f"{rp(inp.get('capacity_y1',0.5))} / {rp(inp.get('capacity_y2',0.6))} / {rp(inp.get('capacity_y3',0.7))} / {rp(inp.get('capacity_y4',0.75))} / {rp(inp.get('capacity_y5',0.8))}"],
+        ["Capacity Schedule (Y1-Y5)", " / ".join(rp(inp.get(f"capacity_y{i + 1}", DEFAULT_CAPACITY_SCHEDULE[i])) for i in range(5))],
         ["Expected Employment",  f"{inp.get('expected_employment',0)} persons"],
     ]
     ov_t = Table(_overview_rows, colWidths=[50*mm, 120*mm])
@@ -906,14 +906,17 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     NL(story, 3)
     cost_rows = [["Sl.","Particulars","Amount (Rs.)","% of Total"]]
     for item in cma["project_cost_items"]:
-        cost_rows.append([str(item["code"]), item["particulars"],
+        particulars = item["particulars"]
+        if particulars == "Working Capital Margin (Promoter's Share)":
+            particulars = "Promoter's Share"
+        cost_rows.append([str(item["code"]), particulars,
                           r(item["amount"]), pof(item["amount"], cma["total_project_cost"])])
     cost_rows.append(["","TOTAL (Initial Project Investment)", r(cma["total_project_cost"]), "100.0%"])
     cost_t = Table(cost_rows, colWidths=[10*mm,90*mm,38*mm,28*mm])
     cost_t.setStyle(BTS()); cost_t.setStyle(TOT(len(cost_rows)-1))
     story.append(cost_t)
 
-    H2("B3. Means of Finance – Fixed Project Funding", story)
+    H2("B3. Means of Finance", story)
     NL(story, 3)
     _b2_margin_money = pc.get("margin_money", 0) or cma.get("margin_money", 0)
     _b2_wc_loan      = R(cma.get("working_capital_loan", pc.get("wc_loan", 0)) or 0, 2)
@@ -960,7 +963,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
         story.append(wc_fin)
         NL(story, 2)
         story.append(Paragraph(
-            "Working Capital Bank Finance is a revolving operational facility and is not included in fixed project cost.",
+            "Working Capital Bank Finance is a revolving operational facility. It is separate from fixed project cost and is included in Total Project Cost.",
             ST["small"]))
         NL(story, 5)
 
@@ -988,11 +991,11 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             ST["small"]))
         NL(story, 2)
         story.append(Paragraph(
-            f"<b>Note:</b> TOTAL FUNDING here (Rs.{_total_funding:,.0f}) is larger than \"Total Project Cost\" "
-            f"shown on the cover page and in Section-B (Rs.{display_total_project_cost:,.0f}) by exactly the "
-            f"WC Bank Finance amount (Rs.{_b2_wc_loan:,.0f}) — \"Total Project Cost\" deliberately excludes the "
-            "WC bank loan (a revolving facility, not part of fixed project cost), while this total includes it "
-            "since it covers the full WC Requirement, bank-funded portion included.",
+            f"<b>Note:</b> Total Project Cost (Rs.{display_total_project_cost:,.0f}) is Term Loan Requested "
+            f"(Rs.{pc['term_loan']:,.0f}) + Working Capital Facility Requested (Rs.{_b2_wc_loan:,.0f}) + "
+            f"Promoter Contribution (Rs.{display_promoter_contribution:,.0f}). Any scheme subsidy "
+            f"(Rs.{_b2_margin_money:,.0f}) is shown separately and is not counted as promoter contribution; TOTAL FUNDING "
+            f"is Rs.{_total_funding:,.0f}.",
             ST["small"]))
     NL(story, 5)
     _tl_de  = round(pc["term_loan"] / max(display_promoter_fixed_equity, 1), 2) if display_promoter_fixed_equity else 0
@@ -1106,6 +1109,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
         "collection cycle before bank submission, and revised if the real cycle differs.",
         ST["small"]))
 
+    _wc_detail_story_start = len(story)
     H2("Working Capital Financing", story)
     NL(story, 3)
     wcfin_rows = [["Particulars", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]]
@@ -1171,6 +1175,9 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             "stock purchased on supplier credit to net against).",
             ST["small"]))
 
+    del story[_wc_detail_story_start:]
+
+    _b5_story_start = len(story)
     H2("B5. Promoter Contribution & Net Worth", story)
     NL(story, 3)
     # Three different % figures, each on a different denominator, were
@@ -1228,6 +1235,10 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             f"Promoter's net worth of Rs.{_net_nw:,.0f} provides additional comfort to the lending institution.",
             ST["small"]))
 
+    _b5_story = story[_b5_story_start:]
+    del story[_b5_story_start:]
+
+    _b6_story_start = len(story)
     H2("B6. Loan Proposal / Credit Structure", story)
     NL(story, 3)
     _morat_mo = inp.get("moratorium_months", inp.get("moratorium_years", 0) * 12)
@@ -1264,6 +1275,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             ST["small"]))
         NL(story, 2)
 
+    _wc_facility_story_start = len(story)
     H2("B. Working Capital Facility", story)
     wc_prop = Table([
         ["Parameter","Value","Parameter","Value"],
@@ -1277,8 +1289,13 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
         "Working Capital Finance is a revolving operational facility, renewed annually based on "
         "utilisation, and is not part of the fixed project cost.",
         ST["small"]))
+    del story[_wc_facility_story_start:]
 
-    H2("B7. Key Financial Assumptions", story)
+    _b6_story = story[_b6_story_start:]
+    del story[_b6_story_start:]
+
+    _b7_story_start = len(story)
+    H2("B5. Key Financial Assumptions", story)
     NL(story, 3)
     _assump_rows = [
         ["Assumption","Value","Assumption","Value"],
@@ -1310,9 +1327,9 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             _assump_rows.append(["WIP Holding Days", str(inp.get("wip_days", 15)), "Finished Goods Days", str(inp.get("fg_days", 30))])
     _assump_rows.append([
         "Capacity Schedule (Y1-Y5)",
-        f"{round(inp.get('capacity_y1',0.50)*100)}% / {round(inp.get('capacity_y2',0.60)*100)}% / {round(inp.get('capacity_y3',0.70)*100)}%",
+        " / ".join(f"{round(inp.get(f'capacity_y{i + 1}', DEFAULT_CAPACITY_SCHEDULE[i]) * 100)}%" for i in range(3)),
         "Capacity (Y4-Y5)",
-        f"{round(inp.get('capacity_y4',0.75)*100)}% / {round(inp.get('capacity_y5',0.80)*100)}%",
+        " / ".join(f"{round(inp.get(f'capacity_y{i + 1}', DEFAULT_CAPACITY_SCHEDULE[i]) * 100)}%" for i in range(3, 5)),
     ])
     assump = Table(_assump_rows, colWidths=[55*mm,30*mm,55*mm,30*mm])
     assump.setStyle(BTS())
@@ -1338,6 +1355,11 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
         "depreciation and Income Tax Act depreciation (each has its own, different rates and block-of-assets "
         "rules) — actual tax depreciation must be computed separately per the applicable Income Tax provisions.",
         ST["small"]))
+
+    _b7_story = story[_b7_story_start:]
+    del story[_b7_story_start:]
+    story.extend(_b7_story)
+    story.extend(_b6_story)
     PB(story)
 
 
@@ -1355,7 +1377,7 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     SEC(_sec11_title, story)
 
     if _is_trading_service:
-        H2("D1. Operating Parameters", story)
+        H2("D1. Production Parameters", story)
         if _is_service:
             _d1_rows = [
                 ["Parameter","Value","Unit"],
@@ -1446,15 +1468,9 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             sales_t.setStyle(BTS()); sales_t.setStyle(TOT(len(sales_rows)-1))
         story.append(sales_t)
         NL(story, 5)
-        # 100%-capacity revenue is NOT constant across years — it grows with the
-        # revenue-escalation assumption, independently of the capacity ramp-up.
-        # Shown as an explicit per-year table (not just a note) so it's visibly
-        # clear that a later year's revenue can exceed the Year-1 100%-capacity
-        # figure even at a lower stated capacity %.
         story.append(Paragraph(
-            "<b>Revenue Build-Up:</b> 100%-capacity revenue grows with the revenue escalation assumption "
-            f"({rp2(inp.get('revenue_growth_pct', 0))}/year, Section-B), independently of the capacity "
-            "ramp-up below.",
+            "<b>Revenue Build-Up:</b> Year 1 revenue at 100% installed capacity is held constant; "
+            "each projected year applies its capacity utilization to that baseline.",
             ST["small"]))
         NL(story, 3)
         _cap_rows = [["Year", "100% Capacity Revenue (Rs.)", "Capacity %", "Projected Revenue (Rs.)"]]
@@ -1617,8 +1633,8 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
             if _prim_rm: _rm_note.append(f"Primary Raw Material: <b>{_prim_rm}</b>")
             if _rm_supp: _rm_note.append(f"Supplier: <b>{_rm_supp}</b>")
             story.append(Paragraph("  |  ".join(_rm_note), ST["small"]))
+    _gross_profit_story_start = len(story)
     NL(story, 6)
-
     H2("Gross Profit (Year 1 → Year 5)", story)
     gp_rows = [["Particulars"] + [f"Year {cy['year']}" for cy in cop]]
     gp_rows.append(["Sales Revenue"] + [r(cy["revenue"]) for cy in cop])
@@ -1627,6 +1643,8 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     gp_t = Table(gp_rows, colWidths=[40*mm]+[26*mm]*5)
     gp_t.setStyle(BTS()); gp_t.setStyle(TOT(3))
     story.append(gp_t)
+    _gross_profit_story_end = len(story)
+    del story[_gross_profit_story_start:_gross_profit_story_end]
 
     _sec19_title = (
         "D4. Shop Equipment, Fixtures & Interiors"    if _is_trading else
@@ -1833,13 +1851,9 @@ def _build_pdf_content(inp: dict, cma: dict, dpr: dict, output_path: str):
     ]
     bs_rows = [
         ["Particulars","Year 0","Year 1","Year 2","Year 3","Year 4","Year 5"],
-        ["I. EQUITY & LIABILITIES","","","","","",""],
-        ["  (a) Owners' Funds","","","","","",""],
-        ["  Equity / Promoter Capital"]  + [r(pb["equity"])                for pb in pbs],
-        *(
-            [["  Promoter's WC Margin"] + [r(pb.get("promoter_wc_margin", 0)) for pb in pbs]]
-            if any(pb.get("promoter_wc_margin", 0) for pb in pbs) else []
-        ),
+        ["I. EQUITY & LIABILITIES","","","","","", ""],
+        ["  (a) Owners' Funds","","","","","", ""],
+        ["  Promoter Capital"]  + [r(float(pb.get("equity", 0) or 0) + float(pb.get("promoter_wc_margin", 0) or 0)) for pb in pbs],
         *(
             [[("  Govt Subsidy (PMEGP TDR)" if _is_pmegp else "  Govt Subsidy (Capital)")] + [r(pb.get("margin_money",0)) for pb in pbs]]
             if any(pb.get("margin_money", 0) for pb in pbs) else []

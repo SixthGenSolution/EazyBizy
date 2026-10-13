@@ -136,7 +136,7 @@ export function useGTABValidation(formData: GTABFormData): GTABValidationResult 
 
     if (annualRevenue > 0 && annualExpense > 0) {
       const loanAmt     = formData.eligible_loan_amount || 0;
-      const rate        = pri?.loan?.interest_rate_pct || 10.5;
+      const rate        = pri?.loan?.interest_rate_pct || 9.5;
       const tenure      = pri?.loan?.tenure_months || 60;
       const moratorium  = pri?.loan?.moratorium_months || 0;
       // Year-1 interest/principal from the same half-yearly equal-principal,

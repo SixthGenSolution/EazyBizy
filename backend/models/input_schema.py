@@ -10,7 +10,7 @@ They sit alongside the flat MasterInput in main_master.py without replacing it.
 from __future__ import annotations
 from enum import Enum
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Enumerations ──────────────────────────────────────────────────────────────
@@ -55,6 +55,12 @@ class ProductItem(BaseModel):
     purchase_price:  float = Field(default=0,  description="Purchase cost per unit (trading only)")
     monthly_revenue: float = Field(default=0)
     mix_pct:         float = Field(default=0,  description="Revenue mix % for this line")
+
+    @model_validator(mode="after")
+    def derive_monthly_revenue(self):
+        if self.monthly_revenue <= 0 and self.units_per_month > 0 and self.avg_price > 0:
+            self.monthly_revenue = self.units_per_month * self.avg_price
+        return self
 
 
 class ApplicantInfo(BaseModel):
@@ -174,7 +180,7 @@ class AssumptionsInfo(BaseModel):
                                 description="Subsidy scheme name / sanction order no. / sanction date / eligible "
                                             "amount / conditions attached — free text, for bank submission "
                                             "supporting documentation. Optional; shown in the report only when provided.")
-    interest_rate_pct:     float = Field(default=10.5)
+    interest_rate_pct:     float = Field(default=9.5)
     tenure_months:         int   = Field(default=60)
     moratorium_months:     int   = Field(default=0)
     revenue_growth_pct:    float = Field(default=7.0)
@@ -190,7 +196,7 @@ class AssumptionsInfo(BaseModel):
     salary_increase_pct:   float = Field(default=10.0, description="Annual salary hike %")
     contingency_pct:       float = Field(default=0.0,  description="Contingency on P&M as %")
     # Capacity utilisation schedule — 0 = use industry default
-    capacity_y1_pct:       float = Field(default=0.0,  description="Year 1 capacity % (0 = industry default: Mfg 50%, Svc 60%)")
+    capacity_y1_pct:       float = Field(default=0.0,  description="Year 1 capacity % (0 = shared five-year default schedule)")
     capacity_y2_pct:       float = Field(default=0.0)
     capacity_y3_pct:       float = Field(default=0.0)
     capacity_y4_pct:       float = Field(default=0.0)

@@ -34,7 +34,7 @@ def calculate_loan_schedule(data, scheme_data: dict) -> list:
     Always returns exactly 5 rows.
     """
     term_loan        = float(scheme_data.get("term_loan", 0) or 0)
-    rate_pct         = float(getattr(data.assumptions, "interest_rate_pct", 10.5) or 10.5)
+    rate_pct         = float(getattr(data.assumptions, "interest_rate_pct", 9.5) or 9.5)
     tenure_mo        = int(getattr(data.assumptions, "tenure_months", 60) or 60)
     moratorium_mo    = int(getattr(data.assumptions, "moratorium_months", 0) or 0)
 

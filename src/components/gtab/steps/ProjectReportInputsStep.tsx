@@ -23,6 +23,7 @@ import SectionTitle from "@/components/gtab/SectionTitle";
 import { getMonthlyWorkingCapital } from "@/lib/workingCapital";
 import { getStep9Tips } from "@/lib/caGuidance";
 import { buildLoanSchedule } from "@/lib/loanSchedule";
+import { CAPACITY_SCHEDULE } from "@/lib/capacitySchedule";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -308,13 +309,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
     });
   };
 
-  // ── Industry-specific capacity defaults (no hardcodes) ─────────────────────
-  const isServiceOrTrading = isService || isTrading;
-  const capacityDefaults: Record<number, number> = isServiceOrTrading
-    ? { 1: 60, 2: 70, 3: 80, 4: 85, 5: 90 }
-    : isAgriculture
-      ? { 1: 80, 2: 85, 3: 90, 4: 95, 5: 100 }
-      : { 1: 50, 2: 60, 3: 70, 4: 75, 5: 80 };
+  const capacityDefaults = CAPACITY_SCHEDULE;
 
   return (
     <div className="mx-auto max-w-none space-y-4 sm:space-y-6">
@@ -365,8 +360,8 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             const ratePresets: number[] = isPMEGP
               ? [11, 12, 13, 14.5]
               : isMudra
-                ? [10, 10.5, 11, 12]
-                : [10, 10.5, 11, 12, 13];
+                ? [10, 9.5, 11, 12]
+                : [10, 9.5, 11, 12, 13];
 
             // Auto collateral text per scheme
             const autoCollateral = isPMEGP
@@ -385,7 +380,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             // half-yearly principal instalments, with interest recalculated
             // on the declining balance each half-year.
             const loanAmt   = financingPlan.termLoanAmount;
-            const rate      = Number(report.loan.interest_rate_pct || 10.5);
+            const rate      = Number(report.loan.interest_rate_pct || 9.5);
             const tenure    = Number(report.loan.tenure_months || 60);
             const morat     = Number(report.loan.moratorium_months || 0);
             const fullSchedule    = buildLoanSchedule(loanAmt, rate, tenure, morat);
@@ -1359,12 +1354,12 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
                       </div>
                       <div className="text-xs text-teal-700">
                         Annual Output: <strong>{Math.round(inputQty * yield_ * workingDays).toLocaleString("en-IN")} units</strong>
-                        &nbsp;|&nbsp; Year 1 Revenue (at {report.dpr.capacity_y1_pct || 50}%): Rs. {Math.round(calcAnnualRev * ((report.dpr.capacity_y1_pct || 50) / 100)).toLocaleString("en-IN")}
-                        &nbsp;|&nbsp; Year 5 Revenue (at {report.dpr.capacity_y5_pct || 80}%): Rs. {Math.round(calcAnnualRev * ((report.dpr.capacity_y5_pct || 80) / 100) * Math.pow(1 + (report.revenue.revenue_growth_pct || 7) / 100, 4)).toLocaleString("en-IN")}
+                        &nbsp;|&nbsp; Year 1 Revenue (at {report.dpr.capacity_y1_pct || CAPACITY_SCHEDULE[0]}%): Rs. {Math.round(calcAnnualRev * ((report.dpr.capacity_y1_pct || CAPACITY_SCHEDULE[0]) / 100)).toLocaleString("en-IN")}
+                        &nbsp;|&nbsp; Year 5 Revenue (at {report.dpr.capacity_y5_pct || CAPACITY_SCHEDULE[4]}%): Rs. {Math.round(calcAnnualRev * ((report.dpr.capacity_y5_pct || CAPACITY_SCHEDULE[4]) / 100) * Math.pow(1 + (report.revenue.revenue_growth_pct || 7) / 100, 4)).toLocaleString("en-IN")}
                       </div>
                       {isAgriculture && (
                         <div className="text-xs text-teal-600 mt-1">
-                          Agriculture note: For agriculture businesses, capacity is typically set at 100% from Year 1 since production follows seasonal/harvest cycles.
+                          Agriculture production is seasonal; adjust annual utilization to reflect expected output.
                         </div>
                       )}
                     </div>
@@ -1397,7 +1392,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             <p>• Tax Rate 25% — illustrative effective-tax assumption; actual tax depends on the applicant's business constitution (a Proprietorship is taxed at the proprietor's individual slab rates) and must be confirmed by a CA</p>
             <p>• Revenue Growth 7% p.a. · Fixed Expense Growth 5% p.a. · Salary Hike 10% p.a. · DSCR benchmark ≥ 1.25</p>
             <p>• Contingency on P&amp;M 5–10% — a cost-overrun buffer banks expect on new machinery purchases</p>
-            <p>• {isServiceOrTrading ? "Service/Trading Capacity: 60→70→80→85→90%" : isAgriculture ? "Agriculture Capacity: 80→85→90→95→100%" : "Manufacturing Capacity: 50→60→70→75→80%"}</p>
+            <p>• Default capacity schedule: {CAPACITY_SCHEDULE.join("→")}%</p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
@@ -1462,13 +1457,12 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
           {/* Capacity Utilization — industry-aware defaults, no hardcodes */}
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
             <p><strong>Capacity Utilization Schedule</strong> — Directly sets Year 1-5 revenue. Banks scrutinize this carefully.</p>
-            <p>Keep Year 1 conservative — banks know a new business cannot run at 100% from Day 1.
-            {isServiceOrTrading ? " Trading/Service default: 60→70→80→85→90%." : isAgriculture ? " Agriculture default: 80→85→90→95→100%." : " Manufacturing default: 50→60→70→75→80%."}</p>
+            <p>Default schedule for all project types: {CAPACITY_SCHEDULE.join("→")}%. Adjust the yearly values to match the project plan.</p>
           </div>
           <div className="grid grid-cols-5 gap-3">
             {[1, 2, 3, 4, 5].map((yr) => {
               const key = `capacity_y${yr}_pct` as keyof typeof report.dpr;
-              const defaultVal = capacityDefaults[yr];
+              const defaultVal = capacityDefaults[yr - 1];
               return (
                 <div key={yr} className="space-y-2">
                   <Label className="text-xs font-semibold">Year {yr} %</Label>

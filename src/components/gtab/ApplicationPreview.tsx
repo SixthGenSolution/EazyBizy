@@ -224,7 +224,7 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
       {/* ── Loan & Financial Assumptions ──────────────────────────────────────── */}
       <SectionCard icon={Landmark} title="Loan & Financial Assumptions">
         <div className="grid md:grid-cols-3 gap-4">
-          <Row label="Interest Rate"     value={`${reportInputs.loan.interest_rate_pct || 10.5}% p.a.`} />
+          <Row label="Interest Rate"     value={`${reportInputs.loan.interest_rate_pct || 9.5}% p.a.`} />
           <Row label="Tenure"            value={`${reportInputs.loan.tenure_months || 60} months`} />
           <Row label="Moratorium"        value={`${reportInputs.loan.moratorium_months || 0} months`} />
           <Row label="Bank Name"         value={reportInputs.loan.bank_name} />

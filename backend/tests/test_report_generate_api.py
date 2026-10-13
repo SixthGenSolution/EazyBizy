@@ -68,6 +68,83 @@ def _download_pdf_text(report_id: str) -> str:
     return "\n".join(page.extract_text() for page in reader.pages)
 
 
+class TestCapacityScheduleReport:
+    def test_default_capacity_schedule_is_used_in_generated_pdf(self):
+        payload = _cgtmse_payload()
+        for year in range(1, 6):
+            payload["assumptions"].pop(f"capacity_y{year}_pct")
+
+        response = client.post("/api/v1/report/generate", json=payload)
+        assert response.status_code == 200, response.text
+        text = " ".join(_download_pdf_text(response.json()["report_id"]).split())
+
+        assert "60.0% / 75.0% / 95.0% / 100.0% / 100.0%" in text
+        assert "Year 1 Projected Revenue at 60.0% Capacity" in text
+
+    def test_service_line_inputs_generate_constant_full_capacity_and_projected_revenue(self):
+        payload = _msme_psu_subsidy_payload()
+        payload["business"]["industry_type"] = "service"
+        payload["production"] = {
+            "input_qty_per_day": 0,
+            "selling_price_per_unit": 0,
+            "working_days_per_year": 300,
+        }
+        payload["products"] = [{
+            "category": "Consulting",
+            "units_per_month": 5,
+            "avg_price": 1000,
+        }]
+        payload["assumptions"].update({
+            "capacity_y1_pct": 60, "capacity_y2_pct": 70, "capacity_y3_pct": 80,
+            "capacity_y4_pct": 85, "capacity_y5_pct": 90,
+        })
+
+        response = client.post("/api/v1/report/generate", json=payload)
+        assert response.status_code == 200, response.text
+        text = " ".join(_download_pdf_text(response.json()["report_id"]).split())
+
+        assert "Annual Revenue (100% Cap, Year 1) Rs. 100,000" in text
+        assert "60.0% / 75.0% / 95.0% / 100.0% / 100.0%" in text
+        for row in (
+            "1 100,000 60.0% 60,000",
+            "2 100,000 75.0% 75,000",
+            "3 100,000 95.0% 95,000",
+            "4 100,000 100.0% 100,000",
+            "5 100,000 100.0% 100,000",
+        ):
+            assert row in text
+
+
+class TestFinancialSnapshotVisibility:
+    def test_financial_snapshot_and_metrics_are_omitted_but_surrounding_sections_remain(self):
+        response = client.post("/api/v1/report/generate", json=_cgtmse_payload())
+        assert response.status_code == 200, response.text
+        text = " ".join(_download_pdf_text(response.json()["report_id"]).split())
+
+        project_snapshot = text.index("Project & Funding Snapshot")
+        next_section = text.index("Credit Assessment", project_snapshot)
+        project_snapshot_block = text[project_snapshot:next_section]
+
+        assert "Project & Funding Snapshot" in project_snapshot_block
+        for hidden_label in (
+            "Financial Snapshot (Year 1",
+            "Revenue (Rs.)",
+            "EBITDA (Rs.)",
+            "PAT (Rs.)",
+            "Term Loan DSCR",
+            "Average Term Loan DSCR",
+            "Current Ratio (Balance Sheet Basis)",
+            "WC Bank Finance Coverage",
+            "Term Loan D:E",
+            "Promoter % of Initial Investment",
+            "Payback Period (cumulative cash-flow",
+        ):
+            assert hidden_label not in project_snapshot_block
+
+        assert "Credit Assessment" in text
+        assert "SECTION-H: TERM LOAN REPAYMENT" in text
+
+
 class TestReportCustomization:
     def test_custom_theme_prepared_by_and_bank_reach_generated_pdf(self):
         payload = _cgtmse_payload()
@@ -366,11 +443,14 @@ class TestTradingSectionsWithItemizedProductsList:
         text = _download_pdf_text(resp.json()["report_id"])
         exec_summary_value = _year1_row_value("Fixed Project Cost", text)
         section07_total = _year1_row_value("TOTAL (Initial Project Investment)", text)
-        # Section 07's total also includes the WC margin — subtract it back out.
-        wc_margin = _year1_row_value("Working Capital Margin (Promoter's Share)", text)
-        assert abs(exec_summary_value - (section07_total - wc_margin)) < 1, (
+        # Section 07 includes the WC margin and bank facility; remove both to recover fixed cost.
+        wc_margin = _year1_row_value("Promoter's Share", text)
+        assert "Working Capital Margin (Promoter's Share)" not in text
+        wc_facility = _year1_row_value("Working Capital Facility Requested", text)
+        scheme_subsidy = _year1_row_value("Less: Scheme Subsidy (separate funding source)", text)
+        assert abs(exec_summary_value - (section07_total - wc_margin - wc_facility + scheme_subsidy)) < 1, (
             f"Section 02 Fixed Project Cost ({exec_summary_value}) must equal Section 07's "
-            f"own fixed-cost total ({section07_total - wc_margin})"
+            f"own fixed-cost total ({section07_total - wc_margin - wc_facility + scheme_subsidy})"
         )
 
     def test_location_and_district_shown_once_when_identical(self):
@@ -441,7 +521,7 @@ def _msme_psu_subsidy_payload():
 
 class TestProjectCostSingleSourceOfTruth:
     """CA AUDIT: route_scheme() can only estimate Year-1 working capital with
-    a crude heuristic ("1.5 months of 50%-capacity revenue") before the
+    a crude heuristic ("1.5 months of Year-1 capacity revenue") before the
     real, detailed WC schedule exists — every downstream consumer of
     scheme_data["project_cost"] (Payback Period's Initial Investment,
     Section 09's Promoter Share, the scorecard's ROI) used to silently read
@@ -461,26 +541,42 @@ class TestProjectCostSingleSourceOfTruth:
             f"Section 07's own Total Project Cost ({section07_total}) — both describe the same project"
         )
 
-    def test_promoter_share_of_total_funding_uses_subsidy_inclusive_fixed_cost(self):
-        """Section 09's "Total Funding Requirement Promoter Share %" used to
-        exclude the capital subsidy from its own Fixed Cost component
-        (the same bug already fixed for Section 02's "Fixed Project Cost"),
-        understating the true funding-requirement base."""
+    def test_total_project_cost_includes_term_loan_wc_facility_and_promoter_contribution(self):
+        resp = client.post("/api/v1/report/generate", json=_cgtmse_payload())
+        assert resp.status_code == 200, resp.text
+        text = _download_pdf_text(resp.json()["report_id"])
+
+        expected_total = (
+            _year1_row_value("Term Loan Requested", text)
+            + _year1_row_value("Working Capital Facility Requested", text)
+            + _year1_row_value("Promoter Contribution", text)
+        )
+        cover_total = _year1_row_value("Total Project Cost", text)
+        breakdown_total = _year1_row_value("TOTAL (Initial Project Investment)", text)
+
+        assert cover_total == expected_total
+        assert breakdown_total == expected_total
+        assert "Total Project Cost\" deliberately excludes" not in text
+
+    def test_pmegp_total_project_cost_excludes_separate_subsidy_source(self):
+        resp = client.post("/api/v1/report/generate", json=_pmegp_trading_payload())
+        assert resp.status_code == 200, resp.text
+        text = _download_pdf_text(resp.json()["report_id"])
+
+        expected_total = (
+            _year1_row_value("Term Loan Requested", text)
+            + _year1_row_value("Working Capital Facility Requested", text)
+            + _year1_row_value("Promoter Contribution", text)
+        )
+        assert _year1_row_value("Total Project Cost", text) == expected_total
+        assert "Less: Scheme Subsidy (separate funding source)" in text
+
+    def test_promoter_funding_details_are_hidden_from_pdf(self):
         resp = client.post("/api/v1/report/generate", json=_msme_psu_subsidy_payload())
         assert resp.status_code == 200, resp.text
         text = _download_pdf_text(resp.json()["report_id"])
-        fixed_cost = _year1_row_value("Fixed Project Cost", text)
-        wc_total = _year1_row_value("Working Capital Requirement", text)
-        promoter_total = _year1_row_value("Total Promoter Contribution", text)
-        idx = text.find("Total Funding Requirement Promoter Share")
-        assert idx != -1
-        m = re.search(r"[\d.]+", text[idx + len("Total Funding Requirement Promoter Share"):])
-        displayed_pct = float(m.group(0))
-        expected_pct = round(promoter_total / (fixed_cost + wc_total) * 100, 1)
-        assert displayed_pct == expected_pct, (
-            f"Displayed {displayed_pct}% must equal Promoter Contribution / (Fixed Cost + WC Requirement) "
-            f"= {expected_pct}%, both using the subsidy-inclusive Fixed Cost"
-        )
+        assert "B5. Promoter Contribution & Net Worth" not in text
+        assert "Total Funding Requirement Promoter Share" not in text
 
     def test_term_loan_pct_shows_actual_effective_rate_not_the_raw_assumption(self):
         """Section 10 used to show the raw term_loan_pct assumption (e.g.
@@ -690,34 +786,70 @@ class TestSubsidyAccountingTreatmentDisclosure:
         assert "Subsidy Scheme Details: not provided" in flat
 
 
-class TestServiceWorkingCapitalCycleConsistency:
-    """CA AUDIT: Section 16's own WC model for a SERVICE business never
-    includes a Creditors/Payables Rs. line (no inventory bought on
-    supplier credit) — but Section 18 used to always show "Less:
-    Creditor/Payable Days" and net it against Receivable Days regardless,
-    producing a Net Operating Cycle netted against a creditor figure with
-    no corresponding Rs. amount anywhere in Section 16."""
+class TestWorkingCapitalSectionsHidden:
+    """Detailed working-capital financing and cycle sections stay out of the PDF."""
 
-    def test_service_business_section18_has_no_creditor_days_line(self):
+    def test_service_business_hides_working_capital_sections(self):
         payload = _msme_psu_subsidy_payload()  # industry_type="service"
         resp = client.post("/api/v1/report/generate", json=payload)
         assert resp.status_code == 200, resp.text
         text = _download_pdf_text(resp.json()["report_id"])
-        idx = text.find("Working Capital Cycle")
-        section18 = text[idx:idx + 800]
-        assert "Creditor" not in section18
-        assert "NET OPERATING CYCLE" not in section18
-        assert "Operating (Receivable) Cycle" in section18
+        assert "Working Capital Financing" not in text
+        assert "Working Capital Cycle" not in text
 
-    def test_manufacturing_business_section18_keeps_creditor_days_line(self):
+    def test_manufacturing_business_hides_working_capital_sections(self):
         payload = _cgtmse_payload()  # industry_type="manufacturing"
         resp = client.post("/api/v1/report/generate", json=payload)
         assert resp.status_code == 200, resp.text
         text = _download_pdf_text(resp.json()["report_id"])
-        idx = text.find("Working Capital Cycle")
-        section18 = text[idx:idx + 800]
-        assert "Creditor / Payable Days" in section18
-        assert "NET OPERATING CYCLE" in section18
+        assert "Working Capital Financing" not in text
+        assert "Working Capital Cycle" not in text
+
+
+class TestFundingSectionHeading:
+    def test_b3_heading_shortened_but_fixed_funding_box_label_unchanged(self):
+        resp = client.post("/api/v1/report/generate", json=_cgtmse_payload())
+        assert resp.status_code == 200, resp.text
+        text = _download_pdf_text(resp.json()["report_id"])
+        assert "B3. Means of Finance" in text
+        assert "B3. Means of Finance – Fixed Project Funding" not in text
+        assert "A. Fixed Project Funding" in text
+
+
+class TestServiceD1Heading:
+    def test_service_report_uses_production_parameters_heading(self):
+        resp = client.post("/api/v1/report/generate", json=_msme_psu_subsidy_payload())
+        assert resp.status_code == 200, resp.text
+        text = _download_pdf_text(resp.json()["report_id"])
+        assert "D1. Production Parameters" in text
+        assert "D1. Operating Parameters" not in text
+        assert "Service Revenue Model" in text
+
+
+class TestGrossProfitSectionVisibility:
+    def test_d1_gross_profit_section_is_hidden_and_d4_remains(self):
+        resp = client.post("/api/v1/report/generate", json=_cgtmse_payload())
+        assert resp.status_code == 200, resp.text
+        text = _download_pdf_text(resp.json()["report_id"])
+        assert "Gross Profit (Year 1 → Year 5)" not in text
+        assert "D4. Fixed Asset Schedule (Plant, Machinery & Equipment)" in text
+        assert "CNC Machine" in text
+
+
+class TestProjectDetailsSectionVisibilityAndOrder:
+    def test_assumptions_are_b5_and_hidden_sections_are_absent(self):
+        resp = client.post("/api/v1/report/generate", json=_cgtmse_payload())
+        assert resp.status_code == 200, resp.text
+        text = " ".join(_download_pdf_text(resp.json()["report_id"]).split())
+        assumptions = text.find("B5. Key Financial Assumptions")
+        b6 = text.find("B6. Loan Proposal / Credit Structure")
+        assert assumptions >= 0
+        assert b6 > assumptions
+        assert "B7. Key Financial Assumptions" not in text
+        assert "B5. Promoter Contribution & Net Worth" not in text
+        assert "Promoter Net Worth Statement" not in text
+        assert "B. Working Capital Facility" not in text
+        assert "A. Term Loan" in text
 
 
 class TestTotalDebtSchedulePastFiveYears:

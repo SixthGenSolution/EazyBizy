@@ -13,9 +13,8 @@ CA Rules (PDF §7.3):
   Tax = max(0, PBT × 25%) — MANDATORY.
   Cash Accruals = PAT + Depreciation (NOT PBT + Dep).
 """
-from core.engine import R, annual_revenue_from_prod, get_industry_defaults
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, R, annual_revenue_from_prod, get_industry_defaults
 
-_CAPACITY_SCHEDULE = [0.50, 0.60, 0.70, 0.75, 0.80]
 _DEFAULT_TAX_RATE  = 0.25
 _ADMIN_GROWTH      = 0.05
 
@@ -113,7 +112,7 @@ def calculate_income_statement(
     if all(v is not None and float(v or 0) > 0 for v in user_caps):
         capacities = [float(v or 0) / 100 for v in user_caps]
     else:
-        capacities = ind_defaults.get("capacity_schedule", _CAPACITY_SCHEDULE)
+        capacities = ind_defaults.get("capacity_schedule", DEFAULT_CAPACITY_SCHEDULE)
 
     # SINGLE SOURCE OF TRUTH: product table entries are the user's actual Year-1 expected revenue.
     # Back-calculate annual_rev_100 so that annual_rev_100 × cap_y1 = product_monthly × 12 exactly.
@@ -191,11 +190,9 @@ def calculate_income_statement(
         yr  = i + 1
         cap = capacities[i] if i < len(capacities) else capacities[-1]
 
-        # Revenue must follow the SAME volume ramp as COGS (capacity[i]) plus price
-        # growth (rev_g). Y1 (i=0) = cap[0] × rev_100 → matches the product-table
-        # single source of truth. Earlier code grew revenue by rev_g only, so it
-        # under-ran the capacity ramp that COGS follows → margins collapsed.
-        rev = R(annual_rev_100 * cap * (1 + rev_g) ** i)
+        # Keep Year 1 full-capacity revenue as the fixed baseline; utilization alone
+        # determines each year's projected revenue.
+        rev = R(annual_rev_100 * cap)
 
         # RM scales with capacity (volume) AND compounds by cost inflation (exp_g),
         # mirroring revenue's price growth so gross margin stays realistic rather

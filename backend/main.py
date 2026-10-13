@@ -29,7 +29,7 @@ def _safe_filename(name: str, max_len: int = 64) -> str:
     sanitized = _SAFE_NAME_RE.sub('', name).replace(' ', '_')
     return sanitized[:max_len] or 'unknown'
 
-from core.engine import run_dpr, run_cma, R, _tally_projected_balance_sheet
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, run_dpr, run_cma, R, _tally_projected_balance_sheet
 from pdf.builder import build_pdf
 from schemes.pmegp import calculate_pmegp_finance, PMEGPValidationError
 from schemes.router import route_scheme
@@ -150,7 +150,7 @@ class MasterInput(BaseModel):
     loan_type: str = Field(default="Term Loan")
     term_loan_amount: float = Field(default=385000)
     working_capital_loan: float = Field(default=56000)
-    loan_interest_rate_pct: float = Field(default=10.5, description="CMA loan interest rate %")
+    loan_interest_rate_pct: float = Field(default=9.5, description="CMA loan interest rate %")
     tenure_months: int = Field(default=60)
     moratorium_months: int = Field(default=0)
     processing_fee_pct: float = Field(default=1.0)
@@ -240,7 +240,7 @@ class MasterInput(BaseModel):
     contingency_rate: float = Field(default=0.10)
     term_loan_pct: float = Field(default=0.70)
     wc_loan_pct: float = Field(default=0.60)
-    term_loan_interest: float = Field(default=0.145, description="Decimal: 0.145 = 14.5%")
+    term_loan_interest: float = Field(default=0.095, description="Decimal: 0.095 = 9.5%")
     wc_interest_rate: float = Field(default=0.15)
     salary_increase_rate: float = Field(default=0.10)
     admin_increase_rate: float = Field(default=0.05)
@@ -263,11 +263,11 @@ class MasterInput(BaseModel):
     wc_working_expenses_days: int = Field(default=30)
 
     # ── DPR — CAPACITY UTILISATION PER YEAR ──────────────────────────────────
-    capacity_y1: float = Field(default=0.50)
-    capacity_y2: float = Field(default=0.60)
-    capacity_y3: float = Field(default=0.70)
-    capacity_y4: float = Field(default=0.75)
-    capacity_y5: float = Field(default=0.80)
+    capacity_y1: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[0])
+    capacity_y2: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[1])
+    capacity_y3: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[2])
+    capacity_y4: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[3])
+    capacity_y5: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[4])
 
     # ── DPR — LOAN TENURE ────────────────────────────────────────────────────
     loan_tenure_years: int = Field(default=5)
@@ -397,9 +397,6 @@ def normalize_industry_input(d: dict, industry: str) -> dict:
                 normalized["selling_price_per_unit"] = total_rev
                 normalized["expected_monthly_revenue"] = total_rev
 
-    for field in ("capacity_y1", "capacity_y2", "capacity_y3", "capacity_y4", "capacity_y5"):
-        normalized[field] = 1.0
-
     return normalized
 
 
@@ -473,7 +470,7 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
         reserves = R(reserves + pat, 2)
         p_and_l.append({
             "year":              yr_num,
-            "capacity":          1.0,
+            "capacity":          row.get("capacity", d.get(f"capacity_y{yr_num}", DEFAULT_CAPACITY_SCHEDULE[yr_num - 1])),
             "revenue":           sales,
             "raw_materials":     raw_materials,
             "power":             power,
@@ -494,7 +491,7 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
 
     if not p_and_l:
         p_and_l = [{
-            "year": 1, "capacity": 1.0, "revenue": R(cma.get("annual_revenue", 0), 2),
+            "year": 1, "capacity": d.get("capacity_y1", DEFAULT_CAPACITY_SCHEDULE[0]), "revenue": R(cma.get("annual_revenue", 0), 2),
             "raw_materials": 0.0, "power": 0.0, "labour": 0.0,
             "total_variable": R(cma.get("total_monthly_exp", 0) * 12, 2),
             "depreciation": annual_dep, "admin_expenses": R(cma.get("total_monthly_exp", 0) * 12, 2),

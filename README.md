@@ -4,6 +4,151 @@
 > **Date:** 9 September 2026
 > **Status:** Production Ready
 
+
+
+## Release Note — 13 October 2026 (Interest Rate Update)
+
+### Term Loan Interest Rate Default Update
+
+The default **Term Loan Interest Rate** has been updated from 10.5% to **9.5%** throughout the application.
+
+This change applies to:
+1. **User Input Form**: The default value in the loan details section is now 9.5%.
+2. **Generated CMA Report**: If no rate is explicitly provided by the user, the report now defaults to 9.5%.
+3. **Calculation Engine**: All dependent values, including interest amounts, repayment schedules, and total interest outgo, are automatically recalculated based on this new default.
+
+Existing user inputs that were explicitly entered are preserved and not overwritten.
+
+**Files modified:**
+- Backend Models: [backend/main.py](backend/main.py)
+- Form Adapter: [src/lib/dprFormAdapter.ts](src/lib/dprFormAdapter.ts)
+- PDF Generation: [backend/pdf/generator.py](backend/pdf/generator.py)
+- Documentation: [README.md](README.md)
+
+## Release Note — 13 October 2026 (Balance Sheet Merge)
+
+### Projected Balance Sheet Update (Section K)
+
+Merged the **"Equity / Promoter Capital"** and **"Promoter's WC Margin"** rows into a single row named **"Promoter Capital"** in the Projected Balance Sheet.
+
+The value is now calculated dynamically for each year (Year 0 to Year 5) as:
+`Promoter Capital = Equity / Promoter Capital + Promoter's WC Margin`
+
+This ensures that Net Worth, totals, and all dependent calculations remain correct without double-counting while simplifying the report layout.
+
+**Files modified:**
+- PDF Generation: [backend/pdf/builder.py](backend/pdf/builder.py)
+- Documentation: [README.md](README.md)
+
+## Release Note — 12 October 2026 (WC Reconciliation)
+
+### Working Capital Finance Reconciliation
+
+Corrected the backend logic to ensure that the **Working Capital Requirement** and **Working Capital Finance** always match exactly. Previously, a margin percentage was applied, causing the finance amount to be lower than the assessed requirement. In the current financial model, the bank funds 100% of the assessed working capital requirement.
+
+This change ensures that:
+1. **Working Capital Requirement == Working Capital Finance** in all report sections and projections.
+2. **Total Bank Exposure** correctly equals the sum of the Term Loan and the full Working Capital Finance.
+3. All dependent balance sheet, cash flow, and P&L calculations consistently use this reconciled amount.
+4. No hardcoded values are used; the reconciliation is driven by the core calculation engine.
+
+**Files modified:**
+- Backend calculations: [backend/calculations/working_capital.py](backend/calculations/working_capital.py)
+- Calculation engine: [backend/core/engine.py](backend/core/engine.py)
+- Documentation: [README.md](README.md)
+
+**Verification:**
+- Backend tests: `cd backend && .venv/bin/pytest tests/test_calculations.py -q` → **Passed**.
+- PDF verification: Generated report now shows matching values for Working Capital Requirement and Finance.
+
+
+## Release Note — 12 October 2026
+
+### Capacity schedule update
+
+The default five-year capacity utilization schedule is now **60%, 75%, 95%, 100%, 100%** for all project types. Applicant-entered schedules continue to be honored. Saved projects that contain the exact previous default (50%, 60%, 70%, 75%, 80%) are migrated to the new default when loaded; other custom schedules are preserved.
+
+Capacity is applied in both backend report paths. Annual production-linked sales and raw-material costs use each year's capacity and growth assumptions. Working-capital sales/debtor estimates now follow the same capacity ramp as the P&L; stock, WIP, finished goods, cash accruals, and cash flow consequently recalculate from the updated projections. The generated PDF uses the same schedule for its overview and projection tables.
+
+**Files modified:**
+
+- Shared schedule source: [capacity_schedule.json](capacity_schedule.json)
+- Backend defaults and calculations: [backend/core/engine.py](backend/core/engine.py), [backend/main.py](backend/main.py), [backend/api/report.py](backend/api/report.py), [backend/calculations/income_statement.py](backend/calculations/income_statement.py), [backend/calculations/working_capital.py](backend/calculations/working_capital.py), [backend/models/input_schema.py](backend/models/input_schema.py), [backend/schemes/router.py](backend/schemes/router.py)
+- PDF generation: [backend/pdf/generator.py](backend/pdf/generator.py), [backend/pdf/builder.py](backend/pdf/builder.py)
+- Frontend defaults, saved data, and narrative: [src/lib/capacitySchedule.ts](src/lib/capacitySchedule.ts), [src/types/gtab.ts](src/types/gtab.ts), [src/lib/buildCMAReportInput.ts](src/lib/buildCMAReportInput.ts), [src/lib/dprFormAdapter.ts](src/lib/dprFormAdapter.ts), [src/lib/aiEngine.ts](src/lib/aiEngine.ts), [src/components/gtab/steps/ProjectReportInputsStep.tsx](src/components/gtab/steps/ProjectReportInputsStep.tsx), [tsconfig.app.json](tsconfig.app.json)
+- Tests: [backend/tests/test_calculations.py](backend/tests/test_calculations.py), [backend/tests/test_report_generate_api.py](backend/tests/test_report_generate_api.py), [src/components/gtab/steps/ProjectReportInputsStep.test.tsx](src/components/gtab/steps/ProjectReportInputsStep.test.tsx)
+- Documentation: [README.md](README.md)
+
+**Verification:**
+
+- Backend: `.venv/bin/pytest -q` from `backend/` → **197 passed**.
+- Frontend: `npx vitest run --reporter=default` → **20 files, 78 tests passed**.
+- Production build: `npm run build` → **passed**; Vite reported the existing non-blocking large-chunk warning.
+- Pylance syntax checks: all modified backend Python files checked → **no syntax errors**.
+
+### Revenue baseline and zero-revenue correction
+
+Product/service line monthly revenue is now derived from `units_per_month × avg_price` when the request omits `monthly_revenue`. The root cause was that this field defaulted to zero while the projection engine used it as the sole product-table revenue input, ignoring otherwise valid quantity and price values.
+
+The Year 1 full-capacity annual revenue is calculated from the entered project inputs and held constant for all five years. Annual projected sales use only `Year 1 full-capacity revenue × yearly capacity percentage`; revenue escalation is not applied to this baseline. The same capacity-only projected revenue drives the P&L and working-capital debtor calculation, without applying capacity twice. Exact legacy manufacturing, service/trading, and agriculture default ramps are normalized to the shared schedule; custom schedules remain unchanged.
+
+**Files modified:** [backend/models/input_schema.py](backend/models/input_schema.py), [backend/api/report.py](backend/api/report.py), [backend/calculations/income_statement.py](backend/calculations/income_statement.py), [backend/calculations/working_capital.py](backend/calculations/working_capital.py), [backend/pdf/builder.py](backend/pdf/builder.py), [backend/tests/test_calculations.py](backend/tests/test_calculations.py), [backend/tests/test_report_generate_api.py](backend/tests/test_report_generate_api.py), [README.md](README.md).
+
+**Verification:** full backend suite `.venv/bin/pytest tests -q` from `backend/` → **200 passed**. The live API generated and verified a service-project PDF with a constant Rs.100,000 full-capacity baseline and projected revenues of Rs.60,000, Rs.75,000, Rs.95,000, Rs.100,000, and Rs.100,000. Python syntax checks reported no errors.
+
+### PDF financial snapshot visibility
+
+The generated PDF omits the complete **Financial Snapshot (Year 1 → Year 5)** block, including its Revenue, EBITDA, PAT, and Term Loan DSCR table and all six summary metrics below it. The PDF story elements are removed before layout, so the Project & Funding Snapshot and following sections remain, without an extra gap. Calculations, stored values, API responses, and other report content are unchanged.
+
+**Files modified:** [backend/pdf/builder.py](backend/pdf/builder.py), [backend/tests/test_report_generate_api.py](backend/tests/test_report_generate_api.py), [README.md](README.md).
+
+**Verification:** `cd backend && .venv/bin/pytest tests/test_report_generate_api.py -q` → **52 passed**. The PDF integration test verifies the Financial Snapshot and metrics are absent while Project & Funding Snapshot, Credit Assessment, and Term Loan Repayment remain present.
+
+### B2 promoter-share label
+
+In the generated PDF's **B2. Initial Project Investment** table, the label **Working Capital Margin (Promoter's Share)** is rendered as **Promoter's Share**. This is a display-only label change in [backend/pdf/builder.py](backend/pdf/builder.py); the source project-cost item, amounts, percentages, calculations, and other report content are unchanged. The PDF assertion is in [backend/tests/test_report_generate_api.py](backend/tests/test_report_generate_api.py).
+
+**Verification:** `.venv/bin/pytest tests/test_report_generate_api.py::TestTradingSectionsWithItemizedProductsList::test_section02_fixed_project_cost_matches_section07_total -q` from `backend/` → **1 passed**. The test confirms the new label and existing amount reconciliation, and verifies the old label is absent from the generated PDF.
+
+## Release Note — 9 October 2026
+
+### Fixes applied
+
+This update corrects the total project cost calculation across the shared financing logic so the app now uses the actual user-entered funding stack dynamically:
+
+Total Project Cost = Term Loan Requested + Working Capital Facility Requested + Promoter Contribution
+
+**Updated file paths:**
+
+- [backend/api/report.py](backend/api/report.py)
+- [backend/calculations/validator.py](backend/calculations/validator.py)
+- [backend/core/engine.py](backend/core/engine.py)
+- [backend/pdf/builder.py](backend/pdf/builder.py)
+- [backend/pdf/generator.py](backend/pdf/generator.py)
+- [backend/schemes/router.py](backend/schemes/router.py)
+- [backend/tests/test_report_generate_api.py](backend/tests/test_report_generate_api.py)
+- [backend/tests/test_validator.py](backend/tests/test_validator.py)
+- [src/components/gtab/GTABFormWizard.tsx](src/components/gtab/GTABFormWizard.tsx)
+- [src/components/gtab/steps/ProjectRequirementsStep.tsx](src/components/gtab/steps/ProjectRequirementsStep.tsx)
+- [src/components/gtab/steps/ProjectSummaryStep.tsx](src/components/gtab/steps/ProjectSummaryStep.tsx)
+- [src/components/gtab/steps/WorkingCapitalStep.tsx](src/components/gtab/steps/WorkingCapitalStep.tsx)
+- [src/lib/projectReport.pmegpStore.test.ts](src/lib/projectReport.pmegpStore.test.ts)
+- [src/lib/projectReport.ts](src/lib/projectReport.ts)
+- [README.md](README.md)
+
+**What changed:**
+
+- Updated shared frontend and backend calculations, CMA/PDF tables, summaries, and reconciliation checks to derive totals dynamically from the entered term loan, working-capital facility, and promoter contribution.
+- Kept scheme subsidy separate from promoter contribution and showed it as a separate source in PMEGP reports.
+- Corrected the JavaScript initialization order bug that caused `Cannot access 'includesWorkingCapital' before initialization` during rendering and test runs.
+- Generated sample: [generated_reports/Total_Project_Cost_Sample_2026-10-09.pdf](generated_reports/Total_Project_Cost_Sample_2026-10-09.pdf). It reports Rs.1,687,500 = Rs.765,000 term loan + Rs.472,500 working-capital facility + Rs.450,000 promoter contribution; validation passed.
+
+**Verification:**
+
+- Frontend tests: `npx vitest run --reporter=basic` → 20 test files passed, 76 tests passed.
+- Backend tests: `cd backend && .venv/bin/pytest -q` → 193 passed.
+- Production build: `npm run build` → Vite production build completed successfully. Vite reported a non-blocking large-chunk warning.
+
 ---
 
 ## What is EazyBizy?
@@ -235,6 +380,37 @@ EazyBizy/
 │   └── migrations/          # All DB schema migrations (run in order)
 └── public/
 ```
+
+### Funding Calculation Flow 6/10/2026(hidden)
+
+The report's Means of Finance tables calculate Working Capital Funding and Overall Funding in `backend/pdf/builder.py`.
+
+**Working Capital Funding** combines the working-capital margin with the working-capital loan. `_b2_wc_margin` is the Working Capital margin, and `_b2_wc_loan` is the Working Capital loan. Their sum, rounded to two decimal places, is stored in `_b2_wc_total`:
+
+```python
+_b2_wc_total = R(_b2_wc_margin + _b2_wc_loan, 2)
+```
+
+The report uses `_b2_wc_total` as the total Working Capital Funding value in the Working Capital Funding table.
+
+**Overall Funding** first combines the Term Loan and Working Capital Loan into total bank exposure, then adds the displayed Promoter Contribution and margin money:
+
+```python
+_total_bank_exp = pc["term_loan"] + _b2_wc_loan
+_total_funding = display_promoter_contribution + _total_bank_exp + _b2_margin_money
+```
+
+Here, `_total_bank_exp` is the combined bank exposure from the Term Loan (`pc["term_loan"]`) and Working Capital Loan (`_b2_wc_loan`). `_total_funding` combines the displayed Promoter Contribution (`display_promoter_contribution`), that total bank exposure, and margin money (`_b2_margin_money`). The result is shown in the report's Overall Funding table.
+
+### PDF Section Visibility
+
+The detailed **Working Capital Financing** and **Working Capital Cycle** sections are hidden from generated PDFs in `backend/pdf/builder.py`. Their section-building code and calculations remain unchanged; their PDF story elements are removed before layout, so the remaining content is repaginated without those sections.
+
+In the same file, **Key Financial Assumptions** is rendered with the heading **B5. Key Financial Assumptions**. The **Promoter Contribution & Net Worth** section and the **B. Working Capital Facility** subsection are omitted from the PDF by excluding their generated story elements. Their source code, data, and calculations remain intact. The remaining sections reflow through the normal PDF layout and pagination. Tests in `backend/tests/test_report_generate_api.py` verify the new heading, preserved Term Loan section, and absence of the hidden sections.
+
+The D1 **Gross Profit (Year 1 → Year 5)** subsection is also hidden from PDF output in `backend/pdf/builder.py`: only its bounded story-element range, including the preceding spacer, is omitted before layout. The D4 heading and fixed-asset table remain intact and flow directly after the preceding content. The calculation and table-building code remain unchanged. `backend/tests/test_report_generate_api.py` verifies that Gross Profit is absent and both the D4 heading and its table content remain present.
+
+No other report sections or output formats are changed.
 
 ---
 

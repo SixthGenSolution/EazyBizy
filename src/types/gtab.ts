@@ -1,4 +1,5 @@
 // EazyBizy Application Types
+import { CAPACITY_SCHEDULE, normalizeSavedCapacitySchedule } from "@/lib/capacitySchedule";
 
 export type GTABGender = 'male' | 'female' | 'undisclosed';
 export type GTABEducation = 'post_graduate' | 'graduate' | 'plus_two' | 'tenth';
@@ -292,7 +293,7 @@ export const createInitialProjectReportInputs = (): ProjectReportInputs => ({
     loan_scheme: "",
     loan_type: "Term Loan",
     loan_amount: 0,
-    interest_rate_pct: 10.5,
+    interest_rate_pct: 9.5,
     tenure_months: 60,
     moratorium_months: 0,
     processing_fee_pct: 0,
@@ -369,13 +370,12 @@ export const createInitialProjectReportInputs = (): ProjectReportInputs => ({
     wc_wip_days:                15,
     wc_finished_goods_days:     30,
     wc_working_expenses_days:   30,
-    // Capacity utilisation — 0 = use industry default in buildCMAReportInput
-    // (Manufacturing: 50/60/70/75/80, Service/Trading: 60/70/80/85/90)
-    capacity_y1_pct:            0,
-    capacity_y2_pct:            0,
-    capacity_y3_pct:            0,
-    capacity_y4_pct:            0,
-    capacity_y5_pct:            0,
+    // Capacity utilisation defaults shared by the UI and CMA report input.
+    capacity_y1_pct:            CAPACITY_SCHEDULE[0],
+    capacity_y2_pct:            CAPACITY_SCHEDULE[1],
+    capacity_y3_pct:            CAPACITY_SCHEDULE[2],
+    capacity_y4_pct:            CAPACITY_SCHEDULE[3],
+    capacity_y5_pct:            CAPACITY_SCHEDULE[4],
     // Power (manufacturing)
     power_rate_per_unit:        9.65,
     connected_load_kw:          0,
@@ -438,10 +438,10 @@ export const mergeProjectReportInputs = (
       ...base.working_capital,
       ...inputs.working_capital,
     },
-    dpr: {
+    dpr: normalizeSavedCapacitySchedule({
       ...base.dpr,
       ...inputs.dpr,
-    },
+    }),
     revenue: {
       ...base.revenue,
       ...inputs.revenue,

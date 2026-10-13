@@ -70,8 +70,8 @@ const ProjectSummaryStep = ({ formData, updateFormData, totals }: ProjectSummary
     updateReport({ dpr: { ...report.dpr, ...updates } });
   };
 
-  // CA standard: project cost = fixed capital + promoter's WC margin only.
-  // The full WC requirement is a revolving bank facility — NOT part of project cost.
+  // Project cost follows the actual funding stack used by the applicant:
+  // term loan + working capital facility + promoter contribution.
   const costBreakdown = [
     { label: "Land Cost",                           value: formData.land_cost },
     { label: "Shed / Building Cost",                value: formData.shed_building_cost },

@@ -77,7 +77,7 @@ def _bump_interest_rate(d, extra_pp: float) -> None:
     assum = getattr(d, "assumptions", None)
     if assum is None:
         return
-    assum.interest_rate_pct = float(getattr(assum, "interest_rate_pct", 10.5) or 10.5) + extra_pp
+    assum.interest_rate_pct = float(getattr(assum, "interest_rate_pct", 9.5) or 9.5) + extra_pp
 
 
 def _run_structural_scenario(data, scheme_data, dep, mutate_fns, revenue_chg_pct: float = 0.0):

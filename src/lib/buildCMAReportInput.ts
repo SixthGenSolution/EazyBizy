@@ -1,3 +1,5 @@
+import { CAPACITY_SCHEDULE } from "./capacitySchedule";
+
 /**
  * buildCMAReportInput.ts
  *
@@ -292,7 +294,7 @@ export function buildCMAReportInput(
       wc_margin_pct:          Number(dpr.wc_margin_pct               || 25),
       promoter_drawings_pct:  Number(dpr.promoter_drawings_pct       || 0),
       capital_subsidy_pct:    Number(dpr.capital_subsidy_pct         || 0),
-      interest_rate_pct:      Number(ri.loan.interest_rate_pct       || 10.5),
+      interest_rate_pct:      Number(ri.loan.interest_rate_pct       || 9.5),
       tenure_months:          Number(ri.loan.tenure_months           || 60),
       moratorium_months:      Number(ri.loan.moratorium_months       || 0),
       // ── Growth assumptions ───────────────────────────────────────────────
@@ -311,13 +313,12 @@ export function buildCMAReportInput(
       creditor_days:          Number(ri.working_capital.creditors_days || formData.supplier_credit_days || 15),
       wip_days:               Number(dpr.wip_days                    || 15),
       fg_days:                Number(dpr.fg_days                     || 30),
-      // ── Capacity utilisation — dpr defaults are 0 so || fallback picks industry schedule
-      // Manufacturing: 50/60/70/75/80 | Service/Trading: 60/70/80/85/90 | Agriculture: 80/85/90/95/100
-      capacity_y1_pct: Number(dpr.capacity_y1_pct) || (industry === 'agriculture' ? 80 : ['service','trading'].includes(industry) ? 60 : 50),
-      capacity_y2_pct: Number(dpr.capacity_y2_pct) || (industry === 'agriculture' ? 85 : ['service','trading'].includes(industry) ? 70 : 60),
-      capacity_y3_pct: Number(dpr.capacity_y3_pct) || (industry === 'agriculture' ? 90 : ['service','trading'].includes(industry) ? 80 : 70),
-      capacity_y4_pct: Number(dpr.capacity_y4_pct) || (industry === 'agriculture' ? 95 : ['service','trading'].includes(industry) ? 85 : 75),
-      capacity_y5_pct: Number(dpr.capacity_y5_pct) || (industry === 'agriculture' ? 100 : ['service','trading'].includes(industry) ? 90 : 80),
+      // ── Capacity utilisation uses the shared five-year default schedule.
+      capacity_y1_pct: Number(dpr.capacity_y1_pct) || CAPACITY_SCHEDULE[0],
+      capacity_y2_pct: Number(dpr.capacity_y2_pct) || CAPACITY_SCHEDULE[1],
+      capacity_y3_pct: Number(dpr.capacity_y3_pct) || CAPACITY_SCHEDULE[2],
+      capacity_y4_pct: Number(dpr.capacity_y4_pct) || CAPACITY_SCHEDULE[3],
+      capacity_y5_pct: Number(dpr.capacity_y5_pct) || CAPACITY_SCHEDULE[4],
       // cogs_pct_override REMOVED — backend now uses expenses.raw_materials (Priority 2)
       // or production unit costs (Priority 1). Override was the root cause of inverted DSCR.
       cogs_pct_override: 0,

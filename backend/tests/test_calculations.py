@@ -9,7 +9,7 @@ import sys, os, math, types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
-from core.engine import R, calc_emi, dscr_label, recommendation
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, INDUSTRY_DEFAULTS, R, calc_emi, dscr_label, recommendation
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -27,11 +27,11 @@ def _make_assumptions(**kwargs):
         "tax_rate_pct": 25.0,
         "depreciation_pct": 10.0,
         "building_dep_rate_pct": 5.0,
-        "capacity_y1_pct": 50.0,
-        "capacity_y2_pct": 60.0,
-        "capacity_y3_pct": 70.0,
-        "capacity_y4_pct": 75.0,
-        "capacity_y5_pct": 80.0,
+        "capacity_y1_pct": 60.0,
+        "capacity_y2_pct": 75.0,
+        "capacity_y3_pct": 95.0,
+        "capacity_y4_pct": 100.0,
+        "capacity_y5_pct": 100.0,
         "stock_holding_days": 30,
         "debtor_days": 30,
         "creditor_days": 15,
@@ -487,7 +487,7 @@ class TestWorkingCapital:
         computes COGS from the same products list correctly.
 
         Fixture: 1 product, 800 units/month @ purchase_price 180, monthly
-        revenue Rs.240,000, capacity_y1 50% (fixture default), stock 30 days.
+        revenue Rs.240,000, capacity_y1 60% (fixture default), stock 30 days.
         Correct: rm_at_100pct = (800*180*12)/0.5 = Rs.3,456,000; Year-1 RM =
         3,456,000*0.5 = Rs.1,728,000; Stock (30/360) = Rs.144,000.
         The old bug's answer (rev-based, 70% ratio) would have been Rs.168,000.
@@ -521,6 +521,65 @@ class TestWorkingCapital:
 # 4. Income Statement
 # ─────────────────────────────────────────────────────────────────────────────
 
+class TestCapacityScheduleDefaults:
+    def test_all_industries_share_the_five_year_capacity_schedule(self):
+        expected = (0.60, 0.75, 0.95, 1.00, 1.00)
+        assert DEFAULT_CAPACITY_SCHEDULE == expected
+        assert all(tuple(defaults["capacity_schedule"]) == expected for defaults in INDUSTRY_DEFAULTS.values())
+
+    def test_service_product_quantity_and_price_drive_constant_baseline_and_sales(self):
+        from calculations.depreciation import calculate_depreciation
+        from calculations.income_statement import calculate_income_statement
+        from calculations.loan_schedule import calculate_loan_schedule
+        from calculations.working_capital import calculate_wc_by_year
+        from models.input_schema import ProductItem
+
+        product = ProductItem(category="Consulting", units_per_month=5, avg_price=1000)
+        assumptions = _make_assumptions(
+            capacity_y1_pct=0, capacity_y2_pct=0, capacity_y3_pct=0,
+            capacity_y4_pct=0, capacity_y5_pct=0,
+        )
+        data = _make_data(
+            industry="service",
+            production=_make_production(input_qty_per_day=0, selling_price_per_unit=0),
+            assumptions=assumptions,
+            products=[product],
+        )
+        dep = calculate_depreciation(data, SCHEME_PMEGP)
+        loan = calculate_loan_schedule(data, SCHEME_PMEGP)
+        working_capital = calculate_wc_by_year(data, SCHEME_PMEGP)
+        income = calculate_income_statement(data, SCHEME_PMEGP, dep, loan, working_capital)
+
+        baseline_revenue = 100_000
+        assert product.monthly_revenue == 5_000
+        assert [row["capacity"] for row in income] == list(DEFAULT_CAPACITY_SCHEDULE)
+        for index, capacity in enumerate(DEFAULT_CAPACITY_SCHEDULE):
+            expected_revenue = baseline_revenue * capacity
+            assert income[index]["revenue"] == pytest.approx(expected_revenue)
+            assert income[index]["revenue"] / capacity == pytest.approx(baseline_revenue)
+            assert working_capital[index]["debtors"] == pytest.approx(expected_revenue * 30 / 360, abs=1)
+
+    def test_legacy_master_report_applies_capacity_to_sales_wc_and_cash_flow(self):
+        from main import MasterInput, master_calculate_for_industry
+
+        current = MasterInput(industry="service", scheme="normal_msme")
+        legacy = MasterInput(
+            industry="service", scheme="normal_msme",
+            capacity_y1=0.50, capacity_y2=0.60, capacity_y3=0.70,
+            capacity_y4=0.75, capacity_y5=0.80,
+        )
+        current_report = master_calculate_for_industry(current, "service")
+        legacy_report = master_calculate_for_industry(legacy, "service")
+        current_dpr = current_report["dpr"]
+        legacy_dpr = legacy_report["dpr"]
+
+        current_year_two = current_dpr["profit_and_loss_years"][1]
+        legacy_year_two = legacy_dpr["profit_and_loss_years"][1]
+        assert [row["capacity"] for row in current_dpr["profit_and_loss_years"]] == list(DEFAULT_CAPACITY_SCHEDULE)
+        assert current_year_two["revenue"] != legacy_year_two["revenue"]
+        assert current_dpr["working_capital_years"][1]["total"] != legacy_dpr["working_capital_years"][1]["total"]
+        assert current_dpr["cash_flow_years"][1]["closing_cash"] != legacy_dpr["cash_flow_years"][1]["closing_cash"]
+
 class TestIncomeStatement:
     def _get_income(self, **assum_kwargs):
         from calculations.depreciation import calculate_depreciation
@@ -536,6 +595,49 @@ class TestIncomeStatement:
     def test_returns_5_years(self):
         income = self._get_income()
         assert len(income) == 5
+
+    def test_default_capacity_schedule_scales_revenue_costs_and_working_capital(self):
+        from calculations.depreciation import calculate_depreciation
+        from calculations.income_statement import calculate_income_statement
+        from calculations.loan_schedule import calculate_loan_schedule
+        from calculations.working_capital import calculate_wc_by_year
+
+        assumptions = _make_assumptions(
+            capacity_y1_pct=0, capacity_y2_pct=0, capacity_y3_pct=0,
+            capacity_y4_pct=0, capacity_y5_pct=0,
+        )
+        data = _make_data(assumptions=assumptions)
+        dep = calculate_depreciation(data, SCHEME_PMEGP)
+        loan = calculate_loan_schedule(data, SCHEME_PMEGP)
+        working_capital = calculate_wc_by_year(data, SCHEME_PMEGP)
+        income = calculate_income_statement(data, SCHEME_PMEGP, dep, loan, working_capital)
+
+        annual_revenue_at_full_capacity = 100 * 300 * 500
+        annual_raw_materials_at_full_capacity = 100 * 300 * 200
+        for index, capacity in enumerate(DEFAULT_CAPACITY_SCHEDULE):
+            expected_revenue = annual_revenue_at_full_capacity * capacity
+            expected_raw_materials = annual_raw_materials_at_full_capacity * capacity * 1.05**index
+            assert income[index]["capacity"] == capacity
+            assert income[index]["revenue"] == pytest.approx(expected_revenue)
+            assert income[index]["raw_materials"] == pytest.approx(expected_raw_materials)
+            assert working_capital[index]["rm_stock"] == pytest.approx(
+                expected_raw_materials * 30 / 360, abs=1,
+            )
+            assert working_capital[index]["wip"] == pytest.approx(
+                expected_raw_materials * 15 / 360, abs=1,
+            )
+            assert working_capital[index]["fg"] == pytest.approx(
+                expected_raw_materials * 30 / 360, abs=1,
+            )
+            assert working_capital[index]["creditors"] == pytest.approx(
+                expected_raw_materials * 15 / 360, abs=1,
+            )
+            assert working_capital[index]["debtors"] == pytest.approx(
+                expected_revenue * 30 / 360,
+            )
+            assert income[index]["cash_accruals"] == pytest.approx(
+                income[index]["pat"] + income[index]["depreciation"],
+            )
 
     def test_pbt_minus_tax_equals_pat(self):
         income = self._get_income()

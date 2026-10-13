@@ -225,12 +225,11 @@ def _consistent_cma_dpr():
         "project_cost_items": [
             {"code": 1, "particulars": "Building", "amount": 500.0},
             {"code": 2, "particulars": "Machinery", "amount": 300.0},
+            {"code": 3, "particulars": "Working Capital Facility Requested", "amount": 200.0},
         ],
-        # Initial Investment = Fixed Project Cost (TL 500 + Promoter Fixed
-        # Equity 200 + Subsidy 0 = 700) + WC Margin (100) = 800 — must tie
-        # to check #11 (Initial Investment + WC Bank Finance = Total
-        # Funding Requirement) as well as check #1 (items sum = total).
-        "total_project_cost": 800.0,
+        # Total Project Cost = fixed assets (700) + WC margin (100) + WC
+        # facility (200) = 1,000; all sources must reconcile to this total.
+        "total_project_cost": 1000.0,
         "promoter_fixed_equity": 200.0,
         "promoter_wc_margin": 100.0,
         "total_promoter_contribution": 300.0,
@@ -266,18 +265,13 @@ class TestStructuralReconciliation:
         assert pc_check["passed"] is False
 
     def test_funding_reconciliation_check_name_does_not_overclaim_means_of_finance(self):
-        """CA AUDIT: this check used to be named "Project Cost = Means of
-        Finance" even though it only ever compared the itemised cost
-        table's own sum to Total Project Cost — never the funding side at
-        all. On a live report, Total Project Cost (Rs.15,01,700) and Total
-        Funding Requirement including WC Bank Finance (Rs.16,95,500) are
-        DELIBERATELY different figures, so the old name read as if that
-        distinction had been checked and passed when it hadn't been."""
+        """The funding reconciliation is distinct from the itemised-cost
+        check and compares the complete project total against its sources."""
         cma, dpr = _consistent_cma_dpr()
         checks = structural_reconciliation(cma, dpr)
         names = [c["name"] for c in checks]
         assert "Project Cost = Means of Finance" not in names
-        assert "Initial Project Investment + WC Bank Finance = Total Funding Requirement" in names
+        assert "Total Project Cost = Total Funding Sources" in names
 
     def test_broken_funding_reconciliation_is_caught(self):
         """dpr["project_cost"]["term_loan"] is read independently of
@@ -290,7 +284,7 @@ class TestStructuralReconciliation:
         checks = structural_reconciliation(cma, dpr)
         funding_check = next(
             c for c in checks
-            if c["name"] == "Initial Project Investment + WC Bank Finance = Total Funding Requirement"
+            if c["name"] == "Total Project Cost = Total Funding Sources"
         )
         assert funding_check["passed"] is False
 
