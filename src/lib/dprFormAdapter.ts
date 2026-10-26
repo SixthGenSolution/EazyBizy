@@ -1,3 +1,6 @@
+import { CAPACITY_SCHEDULE, getDefaultCapacitySchedule } from "./capacitySchedule";
+import { resolveWcInterestRatePct } from "./financialDefaults";
+
 import type { MasterFormState, ProductItem, ProjectCostLine } from "@/types/dpr";
 import type { GTABFormData, MachineryItem } from "@/types/gtab";
 import {
@@ -108,6 +111,11 @@ export const buildDprFormStateFromGTAB = (formData: GTABFormData): MasterFormSta
   const totalProjectCost = costItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const machineryItems = report.project_cost.plant_machinery_items;
   const dpr = report.dpr;
+  const durationYears = Math.max(1, Math.min(Math.ceil(Number(report.loan.tenure_months || 60) / 12), 20));
+  const capacitySchedule = Array.isArray(dpr.capacity_schedule_pct) &&
+    dpr.capacity_schedule_pct.length === durationYears
+    ? dpr.capacity_schedule_pct
+    : getDefaultCapacitySchedule(durationYears);
   const machineryTotal = getProjectReportMachineryTotal(formData);
   const financingPlan = getFinancingPlan(formData);
   const promoterContribution =
@@ -180,8 +188,12 @@ export const buildDprFormStateFromGTAB = (formData: GTABFormData): MasterFormSta
     term_loan_amount: termLoanAmount,
     working_capital_loan: wcLoan,
     promoter_contribution: promoterContribution,
+    term_loan_amount_override: dpr.term_loan_amount_override,
+    working_capital_loan_override: dpr.working_capital_loan_override,
+    margin_money_override: dpr.margin_money_override,
+    promoter_contribution_override: dpr.promoter_contribution_override,
     total_working_capital_requirement: monthlyWorkingCapitalRequirement,
-    loan_interest_rate_pct: Number(report.loan.interest_rate_pct || 10.5),
+    loan_interest_rate_pct: Number(report.loan.interest_rate_pct || 9.5),
     tenure_months: Number(report.loan.tenure_months || 60),
     moratorium_months: Number(report.loan.moratorium_months || 0),
     processing_fee_pct: Number(report.loan.processing_fee_pct || 1),
@@ -251,9 +263,9 @@ export const buildDprFormStateFromGTAB = (formData: GTABFormData): MasterFormSta
       monthlyWorkingCapitalRequirement > 0
         ? Number(((wcLoan / monthlyWorkingCapitalRequirement) * 100).toFixed(2))
         : Number(dpr.wc_loan_pct || 60),
-    term_loan_interest_pct: Number(report.loan.interest_rate_pct || 10.5),
-    // WC interest = TL interest + 1.5% (CA standard — WC OD rate is higher than TL)
-    wc_interest_rate_pct: Number(report.loan.interest_rate_pct || 10.5) + 1.5,
+    term_loan_interest_pct: Number(report.loan.interest_rate_pct || 9.5),
+    wc_interest_rate_pct: resolveWcInterestRatePct(report.loan.wc_interest_rate_pct),
+    wc_interest_rate: resolveWcInterestRatePct(report.loan.wc_interest_rate_pct) / 100,
     salary_increase_rate_pct: Number((dpr as any).salary_increase_pct || dpr.salary_increase_rate_pct || 10),
     admin_increase_rate_pct: Number(dpr.admin_increase_rate_pct || report.revenue.expense_growth_pct || 5),
     marketing_expense_pct_pct: Number(dpr.marketing_expense_pct || 2.5),
@@ -268,11 +280,12 @@ export const buildDprFormStateFromGTAB = (formData: GTABFormData): MasterFormSta
     wc_wip_days: Number(dpr.wc_wip_days || 5),
     wc_finished_goods_days: Number(dpr.wc_finished_goods_days || report.working_capital.stock_days || 30),
     wc_working_expenses_days: Number(dpr.wc_working_expenses_days || 30),
-    capacity_y1_pct: Number(dpr.capacity_y1_pct || 50),
-    capacity_y2_pct: Number(dpr.capacity_y2_pct || 60),
-    capacity_y3_pct: Number(dpr.capacity_y3_pct || 70),
-    capacity_y4_pct: Number(dpr.capacity_y4_pct || 75),
-    capacity_y5_pct: Number(dpr.capacity_y5_pct || 80),
+    capacity_y1_pct: capacitySchedule[0] ?? CAPACITY_SCHEDULE[0],
+    capacity_y2_pct: capacitySchedule[1] ?? CAPACITY_SCHEDULE[1],
+    capacity_y3_pct: capacitySchedule[2] ?? CAPACITY_SCHEDULE[2],
+    capacity_y4_pct: capacitySchedule[3] ?? CAPACITY_SCHEDULE[3],
+    capacity_y5_pct: capacitySchedule[4] ?? CAPACITY_SCHEDULE[4],
+    capacity_schedule_pct: capacitySchedule,
     loan_tenure_years: Number(dpr.loan_tenure_years || Math.max(Math.ceil(Number(report.loan.tenure_months || 60) / 12), 1)),
     // FIX: moratorium in months → years. Math.ceil so 6 months → 1 year (bank year 1 is moratorium)
     moratorium_years: Math.ceil(Number(report.loan.moratorium_months || 0) / 12),

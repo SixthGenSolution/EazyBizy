@@ -21,7 +21,8 @@ hardcode one (assumptions.wc_finance_method):
     WC_Loan   = min(DP, Total_WC)   [DP can't fund more than the assessed requirement]
     WC_Margin = Total_WC − WC_Loan
 """
-from core.engine import R, annual_revenue_from_prod, get_industry_defaults
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, R, annual_revenue_from_prod, get_industry_defaults
+from core.financial_defaults import DEFAULT_WC_INTEREST_RATE_PCT, resolve_wc_interest_rate_pct
 
 
 def _product_monthly_cogs(data) -> float:
@@ -85,8 +86,11 @@ def calculate_wc_by_year(data, scheme_data: dict) -> list:
     wc_pct    = float(getattr(assum, "wc_loan_pct", ind["wc_loan_pct"] * 100) or (ind["wc_loan_pct"] * 100)) / 100
     wc_method = str(getattr(assum, "wc_finance_method", "simple_margin") or "simple_margin").lower()
     dp_margin_pct = float(getattr(assum, "wc_margin_pct", 25.0) or 25.0) / 100
-    int_rate  = float(getattr(assum, "interest_rate_pct", 10.5) or 10.5) / 100
+    int_rate  = resolve_wc_interest_rate_pct(
+        getattr(assum, "wc_interest_rate_pct", DEFAULT_WC_INTEREST_RATE_PCT)
+    ) / 100
     rev_growth = float(getattr(assum, "revenue_growth_pct", 7.0) or 7.0) / 100
+    expense_growth = float(getattr(assum, "expense_growth_pct", 5.0) or 5.0) / 100
     salary_hike = float(getattr(assum, "salary_increase_pct", 10.0) or 10.0) / 100
 
     annual_rev_base = annual_revenue_from_prod(data.production, industry)
@@ -113,6 +117,7 @@ def calculate_wc_by_year(data, scheme_data: dict) -> list:
             float(getattr(expenses_data, "marketing",            0) or 0)
         )
 
+    schedule_pct = getattr(assum, "capacity_schedule_pct", None)
     user_caps = [
         getattr(assum, "capacity_y1_pct", None),
         getattr(assum, "capacity_y2_pct", None),
@@ -120,18 +125,22 @@ def calculate_wc_by_year(data, scheme_data: dict) -> list:
         getattr(assum, "capacity_y4_pct", None),
         getattr(assum, "capacity_y5_pct", None),
     ]
-    if all(v is not None and float(v or 0) > 0 for v in user_caps):
+    if schedule_pct:
+        capacities = [float(value) / 100 for value in schedule_pct[:5]]
+        while len(capacities) < 5:
+            capacities.append(ind.get("capacity_schedule", DEFAULT_CAPACITY_SCHEDULE)[len(capacities)])
+    elif all(v is not None and float(v or 0) > 0 for v in user_caps):
         capacities = [float(v or 0) / 100 for v in user_caps]
     else:
-        capacities = ind.get("capacity_schedule", [0.50, 0.60, 0.70, 0.75, 0.80])
+        capacities = ind.get("capacity_schedule", DEFAULT_CAPACITY_SCHEDULE)
 
-    cap_y1       = capacities[0] if capacities else 0.50
+    cap_y1       = capacities[0] if capacities else DEFAULT_CAPACITY_SCHEDULE[0]
     product_monthly = sum(
         float(getattr(p, "monthly_revenue", 0) or 0)
         for p in (getattr(data, "products", None) or [])
     )
-    if product_monthly > 0 and cap_y1 > 0:
-        annual_rev_base = R(product_monthly * 12 / cap_y1)
+    if product_monthly > 0:
+        annual_rev_base = R(product_monthly * 12 / cap_y1) if cap_y1 > 0 else R(product_monthly * 12)
     rm_at_100pct = _compute_rm_at_100pct(data, annual_rev_base, cogs_ratio, cap_y1)
 
     # Industry-specific day overrides
@@ -143,21 +152,16 @@ def calculate_wc_by_year(data, scheme_data: dict) -> list:
         wip_days   = 0   # trading/agriculture: no work-in-progress
 
     result       = []
-    prev_rev     = None
 
     for i in range(5):
         yr  = i + 1
         cap = capacities[i] if i < len(capacities) else capacities[-1]
 
-        # BUG 9 compatible: Revenue Y1 = cap × rev_base; Y2+ = prev × (1 + rev_g)
-        if i == 0:
-            annual_rev = R(annual_rev_base * cap)
-        else:
-            annual_rev = R(prev_rev * (1 + rev_growth))
-        prev_rev = annual_rev
+        # Match the P&L's constant Year 1 full-capacity baseline and utilization ramp.
+        annual_rev = R(annual_rev_base * cap)
 
         # 3-priority RM at this year's capacity (consistent with income_statement)
-        annual_rm   = R(rm_at_100pct * cap)
+        annual_rm   = R(rm_at_100pct * cap * (1 + expense_growth) ** i)
         # Use actual RM as production-cost proxy for WIP/FG (matches P&L COGS)
         annual_cogs = annual_rm
 
@@ -191,21 +195,9 @@ def calculate_wc_by_year(data, scheme_data: dict) -> list:
             expense_float = 0.0
             salary_float = 0.0
             total     = R(max(rm_stock + wip + fg + debtors - creditors, 0))
-        if wc_method == "drawing_power":
-            # DP = paid-for stock/debtors after the bank's margin, less
-            # creditors already funding part of the stock. Can never exceed
-            # the assessed WC requirement itself.
-            drawing_power = R(max(
-                (rm_stock + wip + fg) * (1 - dp_margin_pct)
-                + debtors * (1 - dp_margin_pct)
-                - creditors,
-                0,
-            ))
-            bank_loan = R(min(drawing_power, total))
-            margin    = R(total - bank_loan)
-        else:
-            bank_loan = R(total * wc_pct)
-            margin    = R(total - bank_loan)
+        # Intended financial model: WC Requirement and WC Finance must match.
+        bank_loan = R(total)
+        margin    = 0.0
 
         result.append({
             "year":          yr,
@@ -230,5 +222,10 @@ def calculate_wc_by_year(data, scheme_data: dict) -> list:
             "wc_finance_method": wc_method,
             "wc_margin_pct":     round(dp_margin_pct * 100, 1) if wc_method == "drawing_power" else round(wc_pct * 100, 1),
         })
+
+    year1_bank_loan = result[0]["bank_loan"]
+    for year in result:
+        year["bank_loan"] = year1_bank_loan
+        year["wc_interest"] = R(year1_bank_loan * int_rate)
 
     return result

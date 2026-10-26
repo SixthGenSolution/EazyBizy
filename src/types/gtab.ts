@@ -1,4 +1,6 @@
 // EazyBizy Application Types
+import { CAPACITY_SCHEDULE, normalizeSavedCapacitySchedule } from "@/lib/capacitySchedule";
+import { DEFAULT_WC_INTEREST_RATE_PCT, resolveWcInterestRatePct } from "@/lib/financialDefaults";
 
 export type GTABGender = 'male' | 'female' | 'undisclosed';
 export type GTABEducation = 'post_graduate' | 'graduate' | 'plus_two' | 'tenth';
@@ -145,6 +147,7 @@ export interface ProjectReportInputs {
     loan_type: ProjectReportLoanType;
     loan_amount: number;
     interest_rate_pct: number;
+    wc_interest_rate_pct: number | null;
     tenure_months: number;
     moratorium_months: number;
     processing_fee_pct: number;
@@ -186,10 +189,15 @@ export interface ProjectReportInputs {
     // ── Production parameters (generic names — work for all industries) ──
     // ── Loan & financing ─────────────────────────────────────────────────
     term_loan_pct:              number;   // % of fixed capital financed by TL
+    term_loan_amount_override?: number;
+    working_capital_loan_override?: number;
+    margin_money_override?: number;
+    promoter_contribution_override?: number;
     promoter_equity_pct:        number;   // % of project cost from promoter
     wc_loan_pct:                number;   // % of WC financed by bank (used when wc_finance_method = 'simple_margin')
     wc_finance_method:          "simple_margin" | "drawing_power"; // how the bank sizes WC finance — varies bank-to-bank
     wc_margin_pct:              number;   // bank's margin % on stock/debtors (used when wc_finance_method = 'drawing_power')
+    wc_interest_rate_pct?:  number | null; // Legacy saved WC interest rate
     promoter_drawings_pct:      number;   // % of each year's PAT drawn by promoter/partners; 0 = full retention
     capital_subsidy_pct:        number;   // MSME state capital subsidy % on fixed assets (0 = none)
     contingency_pct:            number;   // contingency on P&M as %
@@ -214,6 +222,7 @@ export interface ProjectReportInputs {
     capacity_y3_pct: number;
     capacity_y4_pct: number;
     capacity_y5_pct: number;
+    capacity_schedule_pct: number[];
     // ── Power (manufacturing only) ────────────────────────────────────────
     power_rate_per_unit:        number;
     connected_load_kw:          number;
@@ -292,7 +301,8 @@ export const createInitialProjectReportInputs = (): ProjectReportInputs => ({
     loan_scheme: "",
     loan_type: "Term Loan",
     loan_amount: 0,
-    interest_rate_pct: 10.5,
+    interest_rate_pct: 9.5,
+    wc_interest_rate_pct: DEFAULT_WC_INTEREST_RATE_PCT,
     tenure_months: 60,
     moratorium_months: 0,
     processing_fee_pct: 0,
@@ -369,13 +379,13 @@ export const createInitialProjectReportInputs = (): ProjectReportInputs => ({
     wc_wip_days:                15,
     wc_finished_goods_days:     30,
     wc_working_expenses_days:   30,
-    // Capacity utilisation — 0 = use industry default in buildCMAReportInput
-    // (Manufacturing: 50/60/70/75/80, Service/Trading: 60/70/80/85/90)
-    capacity_y1_pct:            0,
-    capacity_y2_pct:            0,
-    capacity_y3_pct:            0,
-    capacity_y4_pct:            0,
-    capacity_y5_pct:            0,
+    // Capacity utilisation defaults shared by the UI and CMA report input.
+    capacity_y1_pct:            CAPACITY_SCHEDULE[0],
+    capacity_y2_pct:            CAPACITY_SCHEDULE[1],
+    capacity_y3_pct:            CAPACITY_SCHEDULE[2],
+    capacity_y4_pct:            CAPACITY_SCHEDULE[3],
+    capacity_y5_pct:            CAPACITY_SCHEDULE[4],
+    capacity_schedule_pct:      [...CAPACITY_SCHEDULE],
     // Power (manufacturing)
     power_rate_per_unit:        9.65,
     connected_load_kw:          0,
@@ -417,7 +427,13 @@ export const mergeProjectReportInputs = (
   return {
     promoter: { ...base.promoter, ...inputs.promoter },
     business: { ...base.business, ...inputs.business },
-    loan: { ...base.loan, ...inputs.loan },
+    loan: {
+      ...base.loan,
+      ...inputs.loan,
+      wc_interest_rate_pct: inputs.loan?.wc_interest_rate_pct !== undefined
+        ? resolveWcInterestRatePct(inputs.loan.wc_interest_rate_pct)
+        : resolveWcInterestRatePct(inputs.dpr?.wc_interest_rate_pct),
+    },
     project_cost: {
       ...base.project_cost,
       ...inputs.project_cost,
@@ -438,10 +454,16 @@ export const mergeProjectReportInputs = (
       ...base.working_capital,
       ...inputs.working_capital,
     },
-    dpr: {
-      ...base.dpr,
-      ...inputs.dpr,
-    },
+    dpr: normalizeSavedCapacitySchedule(
+      {
+        ...base.dpr,
+        ...inputs.dpr,
+        capacity_schedule_pct: Array.isArray(inputs.dpr?.capacity_schedule_pct)
+          ? inputs.dpr.capacity_schedule_pct
+          : undefined,
+      },
+      Math.max(1, Math.ceil(Number(inputs.loan?.tenure_months ?? base.loan.tenure_months) / 12)),
+    ),
     revenue: {
       ...base.revenue,
       ...inputs.revenue,

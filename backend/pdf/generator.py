@@ -11,7 +11,9 @@ Usage
 """
 
 from __future__ import annotations
-from core.engine import R, interest_coverage_ratio
+from math import ceil
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, R, interest_coverage_ratio
+from core.financial_defaults import DEFAULT_WC_INTEREST_RATE_PCT, resolve_wc_interest_rate_pct
 from datetime import datetime as _datetime
 
 
@@ -42,6 +44,39 @@ def _format_enum_or_freetext(raw: str) -> str:
     if "_" in raw and " " not in raw:
         return raw.replace("_", " ").title()
     return raw
+
+
+def _capacity_schedule_for_report(assumptions: dict) -> list[float]:
+    duration_years = max(1, min(ceil(float(assumptions.get("tenure_months", 60) or 60) / 12), 20))
+    default_seven_years = [60, 75, 80, 85, 90, 95, 100]
+    default_five_years = [round(capacity * 100, 6) for capacity in DEFAULT_CAPACITY_SCHEDULE]
+    default_schedule = (
+        default_seven_years
+        if duration_years == 7
+        else default_five_years[:duration_years]
+        if duration_years <= len(default_five_years)
+        else [*default_five_years, *([100] * (duration_years - len(default_five_years)))]
+    )
+    submitted = assumptions.get("capacity_schedule_pct")
+    if isinstance(submitted, list) and submitted:
+        schedule = [float(value) for value in submitted[:duration_years]]
+        schedule.extend(default_schedule[len(schedule):])
+        if duration_years == 7 and schedule[:5] == default_five_years:
+            return default_seven_years
+        return schedule
+
+    legacy_schedule = [
+        assumptions.get(f"capacity_y{year}_pct")
+        for year in range(1, min(duration_years, 5) + 1)
+    ]
+    if duration_years == 7 and legacy_schedule == default_five_years:
+        return default_seven_years
+    schedule = [
+        float(value) if value is not None and float(value) > 0 else default_schedule[index]
+        for index, value in enumerate(legacy_schedule)
+    ]
+    schedule.extend(default_schedule[len(schedule):])
+    return schedule
 
 
 def _calc_gross_margin_pct(income: list, monthly: dict | None = None) -> float:
@@ -264,7 +299,13 @@ def validate_report_data(report_data: dict, cma: dict, dpr: dict, inp: dict):
         )
 
 
-def _build_project_cost_items(project: dict, wc_sched: list, industry: str = "manufacturing", machinery_gross: float = 0.0) -> list:
+def _build_project_cost_items(
+    project: dict,
+    wc_sched: list,
+    industry: str = "manufacturing",
+    machinery_gross: float = 0.0,
+    scheme_subsidy: float = 0.0,
+) -> list:
     """Build project cost line items whose sum equals total project cost (Fix #1)."""
     items = []
     code = 1
@@ -313,7 +354,7 @@ def _build_project_cost_items(project: dict, wc_sched: list, industry: str = "ma
         code += 1
     transport = float(project.get("transportation_cost", 0) or 0)
     if transport > 0:
-        items.append({"code": code, "particulars": "Vehicles & Transportation", "amount": transport})
+        items.append({"code": code, "particulars": "Plant, Machinery & Equipment (Motor)", "amount": transport})
         code += 1
     prelim = float(project.get("preliminary_expenses", 0) or 0)
     if prelim > 0:
@@ -322,6 +363,13 @@ def _build_project_cost_items(project: dict, wc_sched: list, industry: str = "ma
     wc_margin = float(wc_sched[0].get("margin", 0)) if wc_sched else 0.0
     if wc_margin > 0:
         items.append({"code": code, "particulars": "Working Capital Margin (Promoter's Share)", "amount": wc_margin})
+        code += 1
+    wc_loan = float(wc_sched[0].get("bank_loan", 0)) if wc_sched else 0.0
+    if wc_loan > 0:
+        items.append({"code": code, "particulars": "Working Capital Facility Requested", "amount": wc_loan})
+        code += 1
+    if scheme_subsidy > 0:
+        items.append({"code": code, "particulars": "Less: Scheme Subsidy (separate funding source)", "amount": -scheme_subsidy})
     return items
 
 
@@ -366,6 +414,7 @@ def generate_pdf(report_data: dict, output_path: str) -> None:
     expenses     = raw_input.get("expenses", {})
     manpower_inp = raw_input.get("manpower", {})
     narrative    = raw_input.get("narrative", {}) or {}
+    capacity_schedule_pct = _capacity_schedule_for_report(assum)
 
     inp = {
         # Applicant
@@ -470,8 +519,10 @@ def generate_pdf(report_data: dict, output_path: str) -> None:
         "contingency_rate":   float(assum.get("contingency_pct", 0) or 0) / 100,
         "term_loan_pct":      float(assum.get("term_loan_pct", 75) or 75) / 100,
         "wc_loan_pct":        float(assum.get("wc_loan_pct", 60) or 60) / 100,
-        "term_loan_interest": float(assum.get("interest_rate_pct", 10.5) or 10.5) / 100,
-        "wc_interest_rate":   float(assum.get("interest_rate_pct", 10.5) or 10.5) / 100,
+        "term_loan_interest": float(assum.get("interest_rate_pct", 9.5) or 9.5) / 100,
+        "wc_interest_rate":   resolve_wc_interest_rate_pct(
+                                  assum.get("wc_interest_rate_pct", DEFAULT_WC_INTEREST_RATE_PCT)
+                              ) / 100,
         "salary_increase_rate": float(assum.get("salary_increase_pct", 10) or 10) / 100,
         "admin_increase_rate":  float(assum.get("expense_growth_pct", 5) or 5) / 100,
         # marketing_expense_pct: derive from income Year 1 (marketing / revenue) so it
@@ -497,6 +548,7 @@ def generate_pdf(report_data: dict, output_path: str) -> None:
         "wc_finished_goods_days": int(assum.get("fg_days", 30) or 30),
         "wc_working_expenses_days": 30,
         "loan_tenure_years":   max(int(float(assum.get("tenure_months", 60) or 60) / 12), 1),
+        "project_duration_years": len(capacity_schedule_pct),
         # CA AUDIT: display the moratorium the loan schedule ACTUALLY
         # applied (rounded to the nearest half-year, since repayment runs
         # on a half-yearly cycle), not the raw applicant input — a 9-month
@@ -539,11 +591,12 @@ def generate_pdf(report_data: dict, output_path: str) -> None:
         "telephone_internet":  float(expenses.get("telephone_internet", 0) or 0),
         "miscellaneous":       float(expenses.get("miscellaneous", 0) or 0),
         # Capacity — read from user assumptions (frontend sends capacity_y*_pct)
-        "capacity_y1": float(assum.get("capacity_y1_pct", 50) or 50) / 100,
-        "capacity_y2": float(assum.get("capacity_y2_pct", 60) or 60) / 100,
-        "capacity_y3": float(assum.get("capacity_y3_pct", 70) or 70) / 100,
-        "capacity_y4": float(assum.get("capacity_y4_pct", 75) or 75) / 100,
-        "capacity_y5": float(assum.get("capacity_y5_pct", 80) or 80) / 100,
+        "capacity_y1": capacity_schedule_pct[0] / 100,
+        "capacity_y2": capacity_schedule_pct[1] / 100 if len(capacity_schedule_pct) > 1 else DEFAULT_CAPACITY_SCHEDULE[1],
+        "capacity_y3": capacity_schedule_pct[2] / 100 if len(capacity_schedule_pct) > 2 else DEFAULT_CAPACITY_SCHEDULE[2],
+        "capacity_y4": capacity_schedule_pct[3] / 100 if len(capacity_schedule_pct) > 3 else DEFAULT_CAPACITY_SCHEDULE[3],
+        "capacity_y5": capacity_schedule_pct[4] / 100 if len(capacity_schedule_pct) > 4 else DEFAULT_CAPACITY_SCHEDULE[4],
+        "capacity_schedule_pct": capacity_schedule_pct,
         # Step 4 narrative texts (appear verbatim in PDF sections A4+)
         "business_description":    narrative.get("business_description", ""),
         "products_services":       narrative.get("products_services", ""),
@@ -591,7 +644,11 @@ def generate_pdf(report_data: dict, output_path: str) -> None:
     # that may include/exclude WC differently). This total is used for ALL ROI,
     # D:E, and asset-turnover calculations to guarantee cross-section consistency.
     _industry_key   = str(business.get("industry_type", "") or inp.get("industry", "manufacturing")).lower()
-    _pc_items       = _build_project_cost_items(project, wc_sched, _industry_key, float(dep.get("pm_with_contingency", 0) or 0))
+    _pc_items       = _build_project_cost_items(
+        project, wc_sched, _industry_key,
+        float(dep.get("pm_with_contingency", 0) or 0),
+        float(scheme.get("margin_money", 0) or 0),
+    )
     _pc_items_sum   = R(sum(item["amount"] for item in _pc_items), 2)
     _scheme_pc      = float(scheme.get("project_cost", 0) or 0)
     # If line items sum to non-zero, use that; fall back to scheme total only when
@@ -850,13 +907,18 @@ def _build_dpr_from_report(
     wc_loan = float(wc_sched[0].get("bank_loan", 0) if wc_sched else scheme.get("wc_loan", 0) or 0)
     promoter = float(scheme.get("promoter_amount", 0) or 0)
     # Compute master project cost from line items (same logic as generate_pdf's _total_pc)
-    _dpr_pc_items = _build_project_cost_items(project or {}, wc_sched, inp.get("industry", inp.get("industry_type", "manufacturing")), float(dep.get("pm_with_contingency", 0) or 0))
+    _dpr_pc_items = _build_project_cost_items(
+        project or {}, wc_sched,
+        inp.get("industry", inp.get("industry_type", "manufacturing")),
+        float(dep.get("pm_with_contingency", 0) or 0),
+        float(scheme.get("margin_money", 0) or 0),
+    )
     _dpr_pc_sum   = R(sum(item["amount"] for item in _dpr_pc_items), 2)
     _scheme_pc    = float(scheme.get("project_cost", tl + promoter) or 0)
     total_proj    = _dpr_pc_sum if _dpr_pc_sum > 0 else _scheme_pc
     gross_block = float(dep.get("gross_block", 0) or 0)
     annual_dep  = float(dep.get("annual_dep", 0) or 0)
-    rate = float(inp.get("term_loan_interest", 0.105) or 0.105)
+    rate = float(inp.get("term_loan_interest", 0.095) or 0.095)
     tenure_yrs = int(inp.get("loan_tenure_years", 5) or 5)
     wc_margin = float(wc_sched[0].get("margin", 0) if wc_sched else 0)
     total_promoter = promoter + wc_margin
@@ -878,7 +940,7 @@ def _build_dpr_from_report(
         "margin_money_pct": float(scheme.get("margin_money_pct", 0) or 0),
         "term_loan":        tl,
         "wc_loan":          wc_loan,
-        "total_finance":    R(promoter + float(scheme.get("margin_money",0) or 0) + tl),  # WC loan is a separate revolving facility — not part of Means of Finance
+        "total_finance":    R(promoter + tl + wc_loan, 2),
         "debt_equity_ratio": de_ratio,
     }
 

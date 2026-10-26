@@ -21,7 +21,9 @@ describe("DepreciationScheduleStep", () => {
     expect(screen.getByText(/Depreciation Schedule \(WDV Method\)/i)).toBeTruthy();
     expect(screen.getAllByText("Year 1").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Year 5").length).toBeGreaterThan(0);
+    expect(screen.getByText("Accumulated Depreciation")).toBeTruthy();
     expect(screen.getByText(/Closing WDV \(Net Block\)/i)).toBeTruthy();
+    expect(screen.getByText(/Opening WDV is the dynamically calculated Year 1 amount, held constant/i)).toBeTruthy();
     expect(screen.queryByText(/SLM/i)).toBeNull();
   });
 });

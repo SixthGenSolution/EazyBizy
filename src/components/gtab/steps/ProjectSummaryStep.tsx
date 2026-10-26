@@ -56,6 +56,35 @@ const ProjectSummaryStep = ({ formData, updateFormData, totals }: ProjectSummary
   const financingPlan = getFinancingPlan(formData);
   const report = formData.project_report_inputs;
   const canAdjustPct = SCHEMES_WITH_BANK_ADJUSTABLE_PCT.includes(formData.loan_scheme);
+  const dpr = report.dpr;
+  const termLoanOverride = dpr.term_loan_amount_override;
+  const workingCapitalLoanOverride = dpr.working_capital_loan_override;
+  const marginMoneyOverride = dpr.margin_money_override;
+  const promoterContributionOverride = dpr.promoter_contribution_override;
+  const termLoanError = termLoanOverride !== undefined && termLoanOverride < 0
+    ? "Term loan amount cannot be negative."
+    : termLoanOverride !== undefined && termLoanOverride > financingPlan.fixedAssetCost
+      ? `Term loan cannot exceed fixed project investment (${formatCurrency(financingPlan.fixedAssetCost)}).`
+      : "";
+  const termLoanSchemeNotice = formData.loan_scheme === "pmegp" && termLoanOverride !== undefined &&
+    Math.abs(termLoanOverride - financingPlan.schemeTermLoanAmount) > 1
+    ? `PMEGP rules indicate ${formatCurrency(financingPlan.schemeTermLoanAmount)} for this category and location. Verify the entered amount.`
+    : "";
+  const workingCapitalLoanError = workingCapitalLoanOverride !== undefined && workingCapitalLoanOverride < 0
+    ? "Working capital loan amount cannot be negative."
+    : workingCapitalLoanOverride !== undefined && workingCapitalLoanOverride > financingPlan.monthlyWorkingCapital
+      ? `Working capital loan cannot exceed monthly working capital (${formatCurrency(financingPlan.monthlyWorkingCapital)}).`
+      : "";
+  const marginMoneyError = marginMoneyOverride !== undefined && marginMoneyOverride < 0
+    ? "Government subsidy cannot be negative."
+    : marginMoneyOverride !== undefined && Math.abs(marginMoneyOverride - financingPlan.schemePMEGPSubsidyAmount) > 1
+      ? `PMEGP rules indicate ${formatCurrency(financingPlan.schemePMEGPSubsidyAmount)} for this category and location. Verify the entered amount.`
+      : "";
+  const promoterContributionError = promoterContributionOverride !== undefined && promoterContributionOverride < 0
+    ? "Promoter contribution cannot be negative."
+    : promoterContributionOverride !== undefined && promoterContributionOverride > financingPlan.fixedAssetCost + financingPlan.monthlyWorkingCapital
+      ? `Promoter contribution cannot exceed the project requirement (${formatCurrency(financingPlan.fixedAssetCost + financingPlan.monthlyWorkingCapital)}).`
+    : "";
 
   const updateReport = (updates: Partial<ProjectReportInputs>) => {
     updateFormData({
@@ -70,8 +99,8 @@ const ProjectSummaryStep = ({ formData, updateFormData, totals }: ProjectSummary
     updateReport({ dpr: { ...report.dpr, ...updates } });
   };
 
-  // CA standard: project cost = fixed capital + promoter's WC margin only.
-  // The full WC requirement is a revolving bank facility — NOT part of project cost.
+  // Project cost follows the actual funding stack used by the applicant:
+  // term loan + working capital facility + promoter contribution.
   const costBreakdown = [
     { label: "Land Cost",                           value: formData.land_cost },
     { label: "Shed / Building Cost",                value: formData.shed_building_cost },
@@ -176,16 +205,28 @@ const ProjectSummaryStep = ({ formData, updateFormData, totals }: ProjectSummary
 
           <div className={`grid grid-cols-1 gap-4 md:gap-6 ${formData.loan_scheme === "pmegp" ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
             <div className="space-y-2">
-              <Label>Term Loan Amount (₹)</Label>
-              <Input readOnly value={formatCurrency(financingPlan.termLoanAmount)} className="h-12 rounded-xl font-semibold" />
+              <Label htmlFor="term-loan-amount">Term Loan Amount (₹)</Label>
+              <Input
+                id="term-loan-amount"
+                type="number"
+                min={0}
+                step="1"
+                value={termLoanOverride ?? financingPlan.termLoanAmount}
+                onChange={(e) => updateDpr({ term_loan_amount_override: Number(e.target.value) || 0 })}
+                aria-invalid={Boolean(termLoanError)}
+                className="h-12 rounded-xl font-semibold"
+              />
+              {termLoanError && <p role="alert" className="text-xs text-destructive">{termLoanError}</p>}
+              {termLoanSchemeNotice && <p role="status" className="text-xs text-amber-700">{termLoanSchemeNotice}</p>}
               {canAdjustPct ? (
                 <>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number" min={0} max={100} className="h-9 w-24 rounded-lg text-sm"
+                      aria-label="Term Loan bank finance percentage"
                       value={report.dpr.term_loan_pct || ""}
                       placeholder={String(financingPlan.termLoanBankFinancePct)}
-                      onChange={(e) => updateDpr({ term_loan_pct: Math.min(Math.max(Number(e.target.value) || 0, 0), 100) })}
+                      onChange={(e) => updateDpr({ term_loan_pct: Math.min(Math.max(Number(e.target.value) || 0, 0), 100), term_loan_amount_override: undefined })}
                     />
                     <span className="text-xs text-muted-foreground">% of Fixed Capital — set to whatever your bank actually offers</span>
                   </div>
@@ -197,28 +238,59 @@ const ProjectSummaryStep = ({ formData, updateFormData, totals }: ProjectSummary
               )}
             </div>
             <div className="space-y-2">
-              <Label>Working Capital Loan Amount (₹)</Label>
-              <Input readOnly value={formatCurrency(financingPlan.workingCapitalLoan)} className="h-12 rounded-xl font-semibold" />
+              <Label htmlFor="working-capital-loan-amount">Working Capital Loan Amount (₹)</Label>
+              <Input
+                id="working-capital-loan-amount"
+                type="number"
+                min={0}
+                step="1"
+                value={workingCapitalLoanOverride ?? financingPlan.workingCapitalLoan}
+                onChange={(e) => updateDpr({ working_capital_loan_override: Number(e.target.value) || 0 })}
+                aria-invalid={Boolean(workingCapitalLoanError)}
+                className="h-12 rounded-xl font-semibold"
+              />
+              {workingCapitalLoanError && <p role="alert" className="text-xs text-destructive">{workingCapitalLoanError}</p>}
               <div className="flex items-center gap-2">
                 <Input
                   type="number" min={0} max={100} className="h-9 w-24 rounded-lg text-sm"
+                  aria-label="Working Capital bank finance percentage"
                   value={report.dpr.wc_loan_pct || ""}
                   placeholder={String(financingPlan.wcBankFinancePct)}
-                  onChange={(e) => updateDpr({ wc_loan_pct: Math.min(Math.max(Number(e.target.value) || 0, 0), 100) })}
+                  onChange={(e) => updateDpr({ wc_loan_pct: Math.min(Math.max(Number(e.target.value) || 0, 0), 100), working_capital_loan_override: undefined })}
                 />
                 <span className="text-xs text-muted-foreground">% of monthly working capital — set to whatever your bank actually offers</span>
               </div>
             </div>
             {formData.loan_scheme === "pmegp" && (
               <div className="space-y-2">
-                <Label>Government Subsidy — Margin Money (₹)</Label>
-                <Input readOnly value={formatCurrency(financingPlan.pmegpSubsidyAmount)} className="h-12 rounded-xl font-semibold" />
+                <Label htmlFor="margin-money-amount">Government Subsidy — Margin Money (₹)</Label>
+                <Input
+                  id="margin-money-amount"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={marginMoneyOverride ?? financingPlan.pmegpSubsidyAmount}
+                  onChange={(e) => updateDpr({ margin_money_override: Number(e.target.value) || 0 })}
+                  aria-invalid={Boolean(marginMoneyError)}
+                  className="h-12 rounded-xl font-semibold"
+                />
+                {marginMoneyError && <p role="alert" className="text-xs text-destructive">{marginMoneyError}</p>}
                 <p className="text-xs text-muted-foreground">PMEGP margin money subsidy, held as TDR for 3 years</p>
               </div>
             )}
             <div className="space-y-2">
-              <Label>Promoter's Contribution (₹)</Label>
-              <Input readOnly value={formatCurrency(financingPlan.promoterContribution)} className="h-12 rounded-xl font-semibold" />
+              <Label htmlFor="promoter-contribution-amount">Promoter's Contribution (₹)</Label>
+              <Input
+                id="promoter-contribution-amount"
+                type="number"
+                min={0}
+                step="1"
+                value={promoterContributionOverride ?? financingPlan.promoterContribution}
+                onChange={(e) => updateDpr({ promoter_contribution_override: Number(e.target.value) || 0 })}
+                aria-invalid={Boolean(promoterContributionError)}
+                className="h-12 rounded-xl font-semibold"
+              />
+              {promoterContributionError && <p role="alert" className="text-xs text-destructive">{promoterContributionError}</p>}
               <p className="text-xs text-muted-foreground">{Number(promoterEquityPct).toFixed(1)}% of total project cost — your own equity</p>
             </div>
           </div>

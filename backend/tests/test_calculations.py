@@ -9,7 +9,7 @@ import sys, os, math, types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
-from core.engine import R, calc_emi, dscr_label, recommendation
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, INDUSTRY_DEFAULTS, R, calc_emi, dscr_label, recommendation
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -27,11 +27,11 @@ def _make_assumptions(**kwargs):
         "tax_rate_pct": 25.0,
         "depreciation_pct": 10.0,
         "building_dep_rate_pct": 5.0,
-        "capacity_y1_pct": 50.0,
-        "capacity_y2_pct": 60.0,
-        "capacity_y3_pct": 70.0,
-        "capacity_y4_pct": 75.0,
-        "capacity_y5_pct": 80.0,
+        "capacity_y1_pct": 60.0,
+        "capacity_y2_pct": 75.0,
+        "capacity_y3_pct": 95.0,
+        "capacity_y4_pct": 100.0,
+        "capacity_y5_pct": 100.0,
         "stock_holding_days": 30,
         "debtor_days": 30,
         "creditor_days": 15,
@@ -303,16 +303,37 @@ class TestDepreciation:
         expected_gross = dep["building_gross"] + dep["pm_with_contingency"]
         assert abs(dep["gross_block"] - expected_gross) < 1
 
-    def test_wdv_depreciation_declines_year_over_year(self):
-        """WDV must decline each year (reducing balance) — never flat like SLM."""
+    def test_year1_opening_wdv_is_reused_and_depreciation_uses_live_rates(self):
         from calculations.depreciation import calculate_depreciation
         data = _make_data()
         dep = calculate_depreciation(data, SCHEME_PMEGP)
         schedule = dep["schedule"]
         assert len(schedule) == 5
-        for i in range(1, 5):
-            assert schedule[i]["depreciation"] < schedule[i - 1]["depreciation"]
-            assert schedule[i]["opening_wdv"] == schedule[i - 1]["closing_wdv"]
+        assert [row["opening_wdv"] for row in schedule] == [schedule[0]["opening_wdv"]] * 5
+        for row in schedule:
+            assert row["building_depreciation"] == R(
+                row["building_opening_wdv"] * data.assumptions.building_dep_rate_pct / 100
+            )
+            assert row["machinery_depreciation"] == R(
+                row["machinery_opening_wdv"] * data.assumptions.depreciation_pct / 100
+            )
+            assert row["depreciation"] == R(
+                row["building_depreciation"] + row["machinery_depreciation"]
+            )
+
+    def test_wdv_accumulated_depreciation_and_net_block_reconcile_each_year(self):
+        from calculations.depreciation import calculate_depreciation
+
+        dep = calculate_depreciation(_make_data(), SCHEME_PMEGP)
+        schedule = dep["schedule"]
+        accumulated = 0
+        for row in schedule:
+            accumulated += row["depreciation"]
+            assert row["accumulated_depreciation"] == accumulated
+            assert row["closing_wdv"] == dep["gross_block"] - accumulated
+            assert row["closing_wdv"] == R(
+                row["building_closing_wdv"] + row["machinery_closing_wdv"]
+            )
 
     def test_wdv_never_goes_negative(self):
         from calculations.depreciation import calculate_depreciation
@@ -343,13 +364,14 @@ class TestDepreciation:
         assert dep["gross_block"] == 2069000
         expected = [
             {"bld": 30000, "mach": 146900, "closing": 1892100},
-            {"bld": 28500, "mach": 132210, "closing": 1731390},
-            {"bld": 27075, "mach": 118989, "closing": 1585326},
-            {"bld": 25721, "mach": 107090, "closing": 1452515},
-            {"bld": 24435, "mach": 96381,  "closing": 1331699},
+            {"bld": 30000, "mach": 146900, "closing": 1715200},
+            {"bld": 30000, "mach": 146900, "closing": 1538300},
+            {"bld": 30000, "mach": 146900, "closing": 1361400},
+            {"bld": 30000, "mach": 146900, "closing": 1184500},
         ]
         for i, exp in enumerate(expected):
             row = dep["schedule"][i]
+            assert row["opening_wdv"] == dep["gross_block"]
             assert row["building_depreciation"] == exp["bld"], f"Year {i+1} building dep"
             assert row["machinery_depreciation"] == exp["mach"], f"Year {i+1} machinery dep"
             assert row["closing_wdv"] == exp["closing"], f"Year {i+1} closing WDV"
@@ -365,6 +387,30 @@ class TestWorkingCapital:
         data = _make_data()
         wc = calculate_wc_by_year(data, SCHEME_PMEGP)
         assert len(wc) == 5
+
+    def test_wc_interest_uses_11_5_percent_when_rate_is_missing_or_null(self):
+        from calculations.working_capital import calculate_wc_by_year
+        from core.financial_defaults import DEFAULT_WC_INTEREST_RATE_PCT
+
+        for assumptions in (
+            _make_assumptions(),
+            _make_assumptions(wc_interest_rate_pct=None),
+        ):
+            wc = calculate_wc_by_year(
+                _make_data(assumptions=assumptions), SCHEME_PMEGP
+            )
+            assert wc[0]["wc_interest"] == pytest.approx(
+                wc[0]["bank_loan"] * DEFAULT_WC_INTEREST_RATE_PCT / 100
+            )
+
+    def test_wc_interest_preserves_custom_rate(self):
+        from calculations.working_capital import calculate_wc_by_year
+
+        wc = calculate_wc_by_year(
+            _make_data(assumptions=_make_assumptions(wc_interest_rate_pct=13.25)),
+            SCHEME_PMEGP,
+        )
+        assert wc[0]["wc_interest"] == pytest.approx(wc[0]["bank_loan"] * 0.1325)
 
     def test_creditor_days_reduce_wc(self):
         from calculations.working_capital import calculate_wc_by_year
@@ -402,13 +448,17 @@ class TestWorkingCapital:
                 f"Year {yr['year']}: WC total {yr['total']} ≠ components {expected}"
             )
 
-    def test_bank_loan_plus_margin_equals_total(self):
+    def test_year1_bank_loan_sets_facility_and_is_reused_in_each_year(self):
         from calculations.working_capital import calculate_wc_by_year
+        from core.financial_defaults import DEFAULT_WC_INTEREST_RATE_PCT
         data = _make_data()
         wc = calculate_wc_by_year(data, SCHEME_PMEGP)
+        year1_bank_loan = wc[0]["total"]
+        assert wc[0]["bank_loan"] == year1_bank_loan
         for yr in wc:
-            assert abs(yr["bank_loan"] + yr["margin"] - yr["total"]) < 1, (
-                f"Year {yr['year']}: bank_loan + margin ≠ total"
+            assert yr["bank_loan"] == year1_bank_loan
+            assert yr["wc_interest"] == pytest.approx(
+                year1_bank_loan * DEFAULT_WC_INTEREST_RATE_PCT / 100
             )
 
     def test_default_method_is_simple_margin(self):
@@ -424,9 +474,8 @@ class TestWorkingCapital:
             wc_finance_method="drawing_power", wc_margin_pct=25.0,
         ))
         wc = calculate_wc_by_year(data, SCHEME_PMEGP)
-        for yr in wc:
-            assert yr["bank_loan"] <= yr["total"] + 1
-            assert abs(yr["bank_loan"] + yr["margin"] - yr["total"]) < 1
+        assert wc[0]["bank_loan"] <= wc[0]["total"] + 1
+        assert all(yr["bank_loan"] == wc[0]["bank_loan"] for yr in wc)
 
     def test_drawing_power_matches_formula_exactly(self):
         from calculations.working_capital import calculate_wc_by_year
@@ -443,9 +492,12 @@ class TestWorkingCapital:
                 0,
             )
             expected_bank_loan = min(dp, yr["total"])
-            assert abs(yr["bank_loan"] - expected_bank_loan) < 1, (
-                f"Year {yr['year']}: bank_loan {yr['bank_loan']} != DP formula {expected_bank_loan}"
-            )
+            if yr["year"] == 1:
+                assert abs(yr["bank_loan"] - expected_bank_loan) < 1, (
+                    f"Year {yr['year']}: bank_loan {yr['bank_loan']} != DP formula {expected_bank_loan}"
+                )
+            else:
+                assert yr["bank_loan"] == wc[0]["bank_loan"]
 
     def test_higher_margin_pct_reduces_drawing_power(self):
         from calculations.working_capital import calculate_wc_by_year
@@ -487,7 +539,7 @@ class TestWorkingCapital:
         computes COGS from the same products list correctly.
 
         Fixture: 1 product, 800 units/month @ purchase_price 180, monthly
-        revenue Rs.240,000, capacity_y1 50% (fixture default), stock 30 days.
+        revenue Rs.240,000, capacity_y1 60% (fixture default), stock 30 days.
         Correct: rm_at_100pct = (800*180*12)/0.5 = Rs.3,456,000; Year-1 RM =
         3,456,000*0.5 = Rs.1,728,000; Stock (30/360) = Rs.144,000.
         The old bug's answer (rev-based, 70% ratio) would have been Rs.168,000.
@@ -521,6 +573,108 @@ class TestWorkingCapital:
 # 4. Income Statement
 # ─────────────────────────────────────────────────────────────────────────────
 
+class TestCapacityScheduleDefaults:
+    def test_all_industries_share_the_five_year_capacity_schedule(self):
+        expected = (0.60, 0.75, 0.95, 1.00, 1.00)
+        assert DEFAULT_CAPACITY_SCHEDULE == expected
+        assert all(tuple(defaults["capacity_schedule"]) == expected for defaults in INDUSTRY_DEFAULTS.values())
+
+    def test_service_product_quantity_and_price_drive_constant_baseline_and_sales(self):
+        from calculations.depreciation import calculate_depreciation
+        from calculations.income_statement import calculate_income_statement
+        from calculations.loan_schedule import calculate_loan_schedule
+        from calculations.working_capital import calculate_wc_by_year
+        from models.input_schema import ProductItem
+
+        product = ProductItem(category="Consulting", units_per_month=5, avg_price=1000)
+        assumptions = _make_assumptions(
+            capacity_y1_pct=0, capacity_y2_pct=0, capacity_y3_pct=0,
+            capacity_y4_pct=0, capacity_y5_pct=0,
+        )
+        data = _make_data(
+            industry="service",
+            production=_make_production(input_qty_per_day=0, selling_price_per_unit=0),
+            assumptions=assumptions,
+            products=[product],
+        )
+        dep = calculate_depreciation(data, SCHEME_PMEGP)
+        loan = calculate_loan_schedule(data, SCHEME_PMEGP)
+        working_capital = calculate_wc_by_year(data, SCHEME_PMEGP)
+        income = calculate_income_statement(data, SCHEME_PMEGP, dep, loan, working_capital)
+
+        baseline_revenue = 100_000
+        assert product.monthly_revenue == 5_000
+        assert [row["capacity"] for row in income] == list(DEFAULT_CAPACITY_SCHEDULE)
+        for index, capacity in enumerate(DEFAULT_CAPACITY_SCHEDULE):
+            expected_revenue = baseline_revenue * capacity
+            assert income[index]["revenue"] == pytest.approx(expected_revenue)
+            assert income[index]["revenue"] / capacity == pytest.approx(baseline_revenue)
+            assert working_capital[index]["debtors"] == pytest.approx(expected_revenue * 30 / 360, abs=1)
+
+    def test_legacy_master_report_applies_capacity_to_sales_wc_and_cash_flow(self):
+        from main import MasterInput, master_calculate_for_industry
+
+        current = MasterInput(industry="service", scheme="normal_msme")
+        legacy = MasterInput(
+            industry="service", scheme="normal_msme",
+            capacity_y1=0.50, capacity_y2=0.60, capacity_y3=0.70,
+            capacity_y4=0.75, capacity_y5=0.80,
+        )
+        current_report = master_calculate_for_industry(current, "service")
+        legacy_report = master_calculate_for_industry(legacy, "service")
+        current_dpr = current_report["dpr"]
+        legacy_dpr = legacy_report["dpr"]
+
+        current_year_two = current_dpr["profit_and_loss_years"][1]
+        legacy_year_two = legacy_dpr["profit_and_loss_years"][1]
+        assert [row["capacity"] for row in current_dpr["profit_and_loss_years"]] == list(DEFAULT_CAPACITY_SCHEDULE)
+        assert current_year_two["revenue"] != legacy_year_two["revenue"]
+        assert current_dpr["working_capital_years"][1]["total"] != legacy_dpr["working_capital_years"][1]["total"]
+        assert current_dpr["cash_flow_years"][1]["closing_cash"] != legacy_dpr["cash_flow_years"][1]["closing_cash"]
+        for income, break_even in zip(
+            current_dpr["profit_and_loss_years"],
+            current_dpr["breakeven_years"],
+        ):
+            expected_operating_fixed = R(
+                income["depreciation"] + income["wc_interest"] + income["tl_interest"],
+                2,
+            )
+            assert break_even["operating_fixed_expenses"] == expected_operating_fixed
+            assert break_even["net_profit"] == R(
+                break_even["contribution"] - expected_operating_fixed,
+                2,
+            )
+
+    def test_master_pmegp_report_preserves_entered_financing_amounts(self):
+        from main import MasterInput, master_calculate_for_industry
+
+        report = master_calculate_for_industry(
+            MasterInput(
+                industry="service",
+                scheme="PMEGP",
+                loan_type="Composite",
+                term_loan_amount=610_000,
+                working_capital_loan=42_000,
+                term_loan_amount_override=610_000,
+                working_capital_loan_override=42_000,
+                margin_money_override=95_000,
+                promoter_contribution_override=250_000,
+                promoter_contribution=250_000,
+                social_category="General",
+                area_type="Urban",
+            ),
+            "service",
+        )
+
+        cma = report["cma"]
+        project_cost = report["dpr"]["project_cost"]
+        assert cma["term_loan"] == 610_000
+        assert cma["working_capital_loan"] == 42_000
+        assert cma["margin_money"] == 95_000
+        assert cma["promoter_contribution"] == 250_000
+        assert project_cost["total_project_cost"] == 902_000
+        assert any("scheme-based amount" in warning for warning in report["meta"]["warnings"])
+
 class TestIncomeStatement:
     def _get_income(self, **assum_kwargs):
         from calculations.depreciation import calculate_depreciation
@@ -536,6 +690,49 @@ class TestIncomeStatement:
     def test_returns_5_years(self):
         income = self._get_income()
         assert len(income) == 5
+
+    def test_default_capacity_schedule_scales_revenue_costs_and_working_capital(self):
+        from calculations.depreciation import calculate_depreciation
+        from calculations.income_statement import calculate_income_statement
+        from calculations.loan_schedule import calculate_loan_schedule
+        from calculations.working_capital import calculate_wc_by_year
+
+        assumptions = _make_assumptions(
+            capacity_y1_pct=0, capacity_y2_pct=0, capacity_y3_pct=0,
+            capacity_y4_pct=0, capacity_y5_pct=0,
+        )
+        data = _make_data(assumptions=assumptions)
+        dep = calculate_depreciation(data, SCHEME_PMEGP)
+        loan = calculate_loan_schedule(data, SCHEME_PMEGP)
+        working_capital = calculate_wc_by_year(data, SCHEME_PMEGP)
+        income = calculate_income_statement(data, SCHEME_PMEGP, dep, loan, working_capital)
+
+        annual_revenue_at_full_capacity = 100 * 300 * 500
+        annual_raw_materials_at_full_capacity = 100 * 300 * 200
+        for index, capacity in enumerate(DEFAULT_CAPACITY_SCHEDULE):
+            expected_revenue = annual_revenue_at_full_capacity * capacity
+            expected_raw_materials = annual_raw_materials_at_full_capacity * capacity * 1.05**index
+            assert income[index]["capacity"] == capacity
+            assert income[index]["revenue"] == pytest.approx(expected_revenue)
+            assert income[index]["raw_materials"] == pytest.approx(expected_raw_materials)
+            assert working_capital[index]["rm_stock"] == pytest.approx(
+                expected_raw_materials * 30 / 360, abs=1,
+            )
+            assert working_capital[index]["wip"] == pytest.approx(
+                expected_raw_materials * 15 / 360, abs=1,
+            )
+            assert working_capital[index]["fg"] == pytest.approx(
+                expected_raw_materials * 30 / 360, abs=1,
+            )
+            assert working_capital[index]["creditors"] == pytest.approx(
+                expected_raw_materials * 15 / 360, abs=1,
+            )
+            assert working_capital[index]["debtors"] == pytest.approx(
+                expected_revenue * 30 / 360,
+            )
+            assert income[index]["cash_accruals"] == pytest.approx(
+                income[index]["pat"] + income[index]["depreciation"],
+            )
 
     def test_pbt_minus_tax_equals_pat(self):
         income = self._get_income()
@@ -774,13 +971,13 @@ class TestDSCR:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestBreakEven:
-    def _get_bep(self):
+    def _get_bep(self, data=None):
         from calculations.depreciation import calculate_depreciation
         from calculations.loan_schedule import calculate_loan_schedule
         from calculations.working_capital import calculate_wc_by_year
         from calculations.income_statement import calculate_income_statement
         from calculations.break_even import calculate_break_even
-        data = _make_data()
+        data = data or _make_data()
         dep  = calculate_depreciation(data, SCHEME_PMEGP)
         loan = calculate_loan_schedule(data, SCHEME_PMEGP)
         wc   = calculate_wc_by_year(data, SCHEME_PMEGP)
@@ -805,6 +1002,97 @@ class TestBreakEven:
         for yr in bep:
             expected = yr["revenue"] - yr["variable_expenses"]
             assert abs(yr["contribution"] - expected) < 1
+
+    def test_variable_expenses_and_bep_metrics_match_section_j_for_all_years(self):
+        from calculations.depreciation import calculate_depreciation
+        from calculations.loan_schedule import calculate_loan_schedule
+        from calculations.working_capital import calculate_wc_by_year
+        from calculations.income_statement import calculate_income_statement
+        from calculations.break_even import calculate_break_even
+
+        data = _make_data()
+        dep = calculate_depreciation(data, SCHEME_PMEGP)
+        loan = calculate_loan_schedule(data, SCHEME_PMEGP)
+        wc = calculate_wc_by_year(data, SCHEME_PMEGP)
+        income = calculate_income_statement(data, SCHEME_PMEGP, dep, loan, wc)
+        bep = calculate_break_even(income, data, SCHEME_PMEGP)
+
+        assert len(bep) == len(income) == 5
+        for pnl, row in zip(income, bep):
+            expected_variable = R(
+                pnl["raw_materials"] + pnl["power"] + pnl["labour"]
+                + pnl["admin_expenses"] + pnl["marketing_expenses"]
+            )
+            assert row["variable_expenses"] == expected_variable
+
+            expected_contribution = R(pnl["revenue"] - expected_variable)
+            expected_margin = R(expected_contribution / pnl["revenue"], 4) if pnl["revenue"] else 0
+            remaining_fixed = R(pnl["fixed_expenses"] - pnl["labour"] - pnl["admin_expenses"])
+            expected_operating_fixed = R(
+                pnl["depreciation"] + pnl["wc_interest"] + pnl["tl_interest"]
+            )
+            expected_net_profit = R(expected_contribution - expected_operating_fixed)
+            expected_financial_fixed = R(remaining_fixed + expected_operating_fixed)
+            expected_operating_bep = R(expected_operating_fixed / expected_margin) if expected_margin > 0 else 0
+            expected_financial_bep = R(expected_financial_fixed / expected_margin) if expected_margin > 0 else 0
+            annual_revenue_at_capacity = pnl["revenue"] / pnl["capacity"] if pnl["capacity"] else 0
+
+            assert row["contribution"] == expected_contribution
+            assert row["contribution_pct"] == expected_margin
+            assert row["operating_fixed_expenses"] == expected_operating_fixed
+            assert row["net_profit"] == expected_net_profit
+            assert row["fixed_expenses"] == expected_financial_fixed
+            assert row["operating_bep_sales"] == expected_operating_bep
+            assert row["bep_sales"] == expected_financial_bep
+            if expected_operating_bep and annual_revenue_at_capacity:
+                assert row["operating_bep_pct"] == R(expected_operating_bep / annual_revenue_at_capacity, 4)
+            if expected_financial_bep and annual_revenue_at_capacity:
+                assert row["bep_pct"] == R(expected_financial_bep / annual_revenue_at_capacity, 4)
+
+    def test_variable_expenses_and_dependent_metrics_respond_to_changed_inputs(self):
+        baseline = self._get_bep()
+        changed_data = _make_data(
+            manpower=types.SimpleNamespace(
+                skilled_count=5, skilled_salary=25000,
+                semi_skilled_count=4, semi_skilled_salary=18000,
+                unskilled_count=3, unskilled_salary=12000,
+            ),
+            expenses=types.SimpleNamespace(
+                raw_materials=0, electricity_water=12000, repair_maintenance=6000,
+                transport_conveyance=8000, telephone_internet=3000,
+                stationery=1500, miscellaneous=2500, marketing=18000,
+                rent=35000, monthly_rent=35000,
+            ),
+        )
+        changed = self._get_bep(changed_data)
+
+        assert changed[0]["variable_expenses"] != baseline[0]["variable_expenses"]
+        assert changed[0]["contribution"] != baseline[0]["contribution"]
+        assert changed[0]["contribution_pct"] != baseline[0]["contribution_pct"]
+        assert changed[0]["operating_bep_sales"] != baseline[0]["operating_bep_sales"]
+        assert changed[0]["bep_sales"] != baseline[0]["bep_sales"]
+
+    def test_zero_revenue_and_capacity_remain_safe(self):
+        from calculations.break_even import calculate_break_even
+
+        data = _make_data()
+        row = calculate_break_even(
+            [{
+                "year": 1, "revenue": 0, "capacity": 0, "raw_materials": 0,
+                "power": 0, "labour": 0, "admin_expenses": 0,
+                "marketing_expenses": 0, "fixed_expenses": 0,
+                "depreciation": 0, "interest": 0,
+            }],
+            data,
+            SCHEME_PMEGP,
+        )[0]
+        assert row["contribution_pct"] == 0
+        assert row["operating_bep_sales"] == 0
+        assert row["operating_bep_pct"] == 0
+        assert row["bep_sales"] == 0
+        assert row["bep_pct"] == 0
+        assert row["operating_bep_not_achievable"]
+        assert row["bep_not_achievable"]
 
     def test_bep_pct_of_capacity_nonzero_for_products_list_based_business(self):
         """BUG FIX: "BEP as % of Capacity" used annual_revenue_from_prod(),
@@ -952,6 +1240,43 @@ class TestBalanceSheet:
         assert bs[0]["other_assets"] == 50000  # preliminary/fixture costs, no longer dropped
         assert bs[0]["promoter_wc_margin"] == 929145
         assert bs[0]["check"] == 0  # still balances
+
+    @pytest.mark.parametrize("year1_bank_borrowing", [125000, 7864200])
+    def test_projected_wc_borrowing_uses_year1_value_for_all_years(self, year1_bank_borrowing):
+        import types
+        from calculations.balance_sheet import calculate_balance_sheet
+
+        scheme_data = {
+            "term_loan": 900000, "wc_loan": year1_bank_borrowing, "promoter_amount": 500000,
+            "margin_money": 0, "project_cost": 1800000, "fixed_project_cost": 1300000,
+        }
+        dep = {"gross_block": 1200000, "annual_dep": 100000}
+        loan_schedule = [
+            {"closing_balance": balance}
+            for balance in (800000, 600000, 400000, 200000, 0)
+        ]
+        wc_schedule = [
+            {"total": total, "bank_loan": bank, "margin": 0}
+            for total, bank in (
+                (300000, year1_bank_borrowing),
+                (400000, year1_bank_borrowing + 100000),
+                (500000, year1_bank_borrowing + 200000),
+                (600000, year1_bank_borrowing + 300000),
+                (700000, year1_bank_borrowing + 400000),
+            )
+        ]
+        income = [
+            {"year": year, "depreciation": 100000, "reserves_surplus": 50000 * year}
+            for year in range(1, 6)
+        ]
+        data = types.SimpleNamespace(project=types.SimpleNamespace(land_cost=0))
+
+        bs = calculate_balance_sheet(data, scheme_data, income, dep, loan_schedule, wc_schedule)
+
+        assert [row["wc_bank"] for row in bs] == [year1_bank_borrowing] * 6
+        for row in bs:
+            assert row["check"] == 0
+            assert row["total_assets"] == row["total_liabilities"]
 
     def test_funding_shortfall_shows_as_negative_cash_not_a_fake_liability(self):
         # BUG FIX: a genuine cash shortfall used to be hidden by clamping
@@ -1340,6 +1665,33 @@ class TestEngineHelpers:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestPdfProjectCostItems:
+    def test_motor_equipment_label_preserves_initial_investment_amounts(self):
+        from pdf.generator import _build_project_cost_items
+
+        project = {
+            "building_cost": 8_048_000,
+            "machinery_items": [{"quantity": 1, "unit_price": 2_064_000}],
+            "computers_cost": 500_000,
+            "furniture_cost": 1_000_000,
+            "transportation_cost": 1_000_000,
+            "preliminary_expenses": 200_000,
+        }
+        items = _build_project_cost_items(
+            project,
+            [{"margin": 0, "bank_loan": 7_864_200}],
+            machinery_gross=2_064_000,
+        )
+        motor_equipment = next(
+            item for item in items
+            if item["particulars"] == "Plant, Machinery & Equipment (Motor)"
+        )
+        total = sum(item["amount"] for item in items)
+
+        assert motor_equipment["amount"] == 1_000_000
+        assert total == 20_676_200
+        assert round(motor_equipment["amount"] / total * 100, 1) == 4.8
+        assert not any(item["particulars"] == "Vehicles & Transportation" for item in items)
+
     def test_machinery_line_uses_loaded_gross_not_raw_sum(self):
         # BUG FIX: the "Initial Project Investment" table's equipment line used
         # the raw machinery_items sum, while Means of Finance / Gross Block

@@ -745,7 +745,7 @@ export const AdvancedCMAWizard = ({ isOpen, onClose, applicationId, initialData,
             preferred_bank: pLoan.bank_name || data.preferred_bank || '',
             tenure_months: Number(pLoan.tenure_months) || 60,
             moratorium_months: Number(pLoan.moratorium_months) || 6,
-            interest_rate: Number(pLoan.interest_rate_pct) || 10.5,
+            interest_rate: Number(pLoan.interest_rate_pct) || 9.5,
           },
           project_cost: {
             land: Number(data.land_cost) || 0,

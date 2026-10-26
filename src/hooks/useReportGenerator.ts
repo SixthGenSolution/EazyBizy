@@ -35,11 +35,28 @@ export interface ReportKeyMetrics {
   report_type:    string;
 }
 
+export interface BreakEvenPreviewYear {
+  year: number;
+  variable_expenses: number;
+  contribution: number;
+  contribution_pct: number;
+  operating_fixed_expenses: number;
+  net_profit: number;
+  operating_bep_sales: number;
+  operating_bep_pct: number;
+  operating_bep_not_achievable: boolean;
+  fixed_expenses: number;
+  bep_sales: number;
+  bep_pct: number;
+  bep_not_achievable: boolean;
+}
+
 export interface ReportResult {
   report_id:          string;
   pdf_url:            string;
   validation_status:  'PASS' | 'WARNINGS' | 'PASS_WITH_WARNINGS' | 'FAIL';
   key_metrics:        ReportKeyMetrics;
+  break_even:         BreakEvenPreviewYear[];
   validation_warnings?: string[];
 }
 
@@ -47,6 +64,7 @@ export interface ValidationPreview {
   dscr_average:  number;
   year1_revenue: number;
   year1_pat:     number;
+  break_even: BreakEvenPreviewYear[];
 }
 
 export interface SchemeInfo {
@@ -65,6 +83,7 @@ export function useReportGenerator() {
   const [error,            setError]            = useState<string | null>(null);
   const [reportResult,     setReportResult]     = useState<ReportResult | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [validationPreview, setValidationPreview] = useState<ValidationPreview | null>(null);
 
   /**
    * Step 1 — Validate inputs before full generation.
@@ -72,6 +91,7 @@ export function useReportGenerator() {
    * Returns true if valid (network errors are silent — don't block the user).
    */
   const validatePartial = useCallback(async (payload: object): Promise<boolean> => {
+    setValidationPreview(null);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/report/validate`, {
         method:  'POST',
@@ -81,6 +101,7 @@ export function useReportGenerator() {
       });
       const data = await res.json();
       setValidationErrors(data.errors ?? []);
+      setValidationPreview(data.preview ?? null);
       return data.valid === true;
     } catch {
       return true; // don't block user on network error during partial validation
@@ -175,6 +196,7 @@ export function useReportGenerator() {
     error,
     reportResult,
     validationErrors,
+    validationPreview,
     validatePartial,
     generateReport,
     downloadPDF,

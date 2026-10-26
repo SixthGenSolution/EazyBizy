@@ -48,6 +48,7 @@ Deno.serve(async (req) => {
     const promoterInputs = (projectReportInputs.promoter ?? {}) as Record<string, any>;
     const businessInputs = (projectReportInputs.business ?? {}) as Record<string, any>;
     const loanInputs = (projectReportInputs.loan ?? {}) as Record<string, any>;
+    const dprInputs = (projectReportInputs.dpr ?? {}) as Record<string, any>;
     const promoterContributionInputs = (projectReportInputs.promoter_contribution ?? {}) as Record<string, any>;
     const workingCapitalInputs = (projectReportInputs.working_capital ?? {}) as Record<string, any>;
     const revenueInputs = (projectReportInputs.revenue ?? {}) as Record<string, any>;
@@ -111,6 +112,17 @@ Deno.serve(async (req) => {
       }).format(amount);
     };
 
+    const formatOverride = (label: string, value: unknown) =>
+      value === undefined || value === null || !Number.isFinite(Number(value))
+        ? ""
+        : `- ${label}: ${formatINR(Number(value))}`;
+    const manualFinancingOverrides = [
+      formatOverride("Term Loan Amount", dprInputs.term_loan_amount_override),
+      formatOverride("Working Capital Loan Amount", dprInputs.working_capital_loan_override),
+      formatOverride("Government Subsidy — Margin Money", dprInputs.margin_money_override),
+      formatOverride("Promoter's Contribution", dprInputs.promoter_contribution_override),
+    ].filter(Boolean).join("\n") || "No manual amount overrides were entered.";
+
     // Generate the CMA Report using Lovable AI
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     
@@ -164,6 +176,9 @@ ${businessInputs.store_city || app.city || 'N/A'}, ${businessInputs.store_state 
 **TOTAL PROJECT COST: ${formatINR(totalProjectCost)}**
 **PROMOTER CONTRIBUTION: ${formatINR(marginMoney)}**
 **ELIGIBLE LOAN AMOUNT: ${formatINR(effectiveLoanAmount)}**
+
+**USER-ENTERED MEANS OF FINANCE AMOUNTS (use these exact values; do not replace with defaults or recalculate):**
+${manualFinancingOverrides}
 
 **MONTHLY OPERATING EXPENSES:**
 - Rent: ${formatINR(Number(app.monthly_rent) || 0)}

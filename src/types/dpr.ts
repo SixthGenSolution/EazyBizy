@@ -58,6 +58,10 @@ export interface MasterFormState {
   term_loan_amount: number;
   working_capital_loan: number;
   promoter_contribution: number;
+  term_loan_amount_override?: number;
+  working_capital_loan_override?: number;
+  margin_money_override?: number;
+  promoter_contribution_override?: number;
   total_working_capital_requirement: number;
   loan_interest_rate_pct: number;
   tenure_months: number;
@@ -121,6 +125,7 @@ export interface MasterFormState {
   wc_loan_pct_pct: number;
   term_loan_interest_pct: number;
   wc_interest_rate_pct: number;
+  wc_interest_rate: number;
   salary_increase_rate_pct: number;
   admin_increase_rate_pct: number;
   marketing_expense_pct_pct: number;
@@ -141,6 +146,7 @@ export interface MasterFormState {
   capacity_y3_pct: number;
   capacity_y4_pct: number;
   capacity_y5_pct: number;
+  capacity_schedule_pct: number[];
   loan_tenure_years: number;
   moratorium_years: number;
 

@@ -23,6 +23,7 @@ import {
   type SchemeDetails,
 } from '@/lib/loanRulesEngine';
 import { getYear1LoanFigures } from '@/lib/loanSchedule';
+import { getFinancingPlan } from '@/lib/projectReport';
 
 export interface GTABValidationResult {
   applicant: ValidationResult;
@@ -39,6 +40,7 @@ export function useGTABValidation(formData: GTABFormData): GTABValidationResult 
   return useMemo(() => {
     const pri = formData.project_report_inputs;
     const wc  = pri?.working_capital;
+    const financingPlan = getFinancingPlan(formData);
 
     // Applicant data — use actual GTABFormData field names
     const applicant: ApplicantData = {
@@ -97,9 +99,9 @@ export function useGTABValidation(formData: GTABFormData): GTABValidationResult 
     // Scheme details
     const schemeDetails: SchemeDetails = {
       loan_scheme: formData.loan_scheme,
-      loan_amount_requested: formData.eligible_loan_amount || 0,
-      promoter_contribution: formData.margin_money || 0,
-      project_cost: formData.total_project_cost || 0,
+      loan_amount_requested: financingPlan.totalBankFinance,
+      promoter_contribution: financingPlan.promoterContribution,
+      project_cost: financingPlan.totalProjectCost,
       industry_type: formData.industry_type,
       is_second_loan: formData.is_second_loan || false,
       area_type: formData.area_type || 'rural',
@@ -136,7 +138,7 @@ export function useGTABValidation(formData: GTABFormData): GTABValidationResult 
 
     if (annualRevenue > 0 && annualExpense > 0) {
       const loanAmt     = formData.eligible_loan_amount || 0;
-      const rate        = pri?.loan?.interest_rate_pct || 10.5;
+      const rate        = pri?.loan?.interest_rate_pct || 9.5;
       const tenure      = pri?.loan?.tenure_months || 60;
       const moratorium  = pri?.loan?.moratorium_months || 0;
       // Year-1 interest/principal from the same half-yearly equal-principal,

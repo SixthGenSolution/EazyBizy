@@ -1,6 +1,8 @@
-import math, uuid, traceback
+import json, math, uuid, traceback
+from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
+from core.financial_defaults import resolve_wc_interest_rate
 
 # ── Per-scheme benchmarks (PDF §5) ───────────────────────────────────────────
 # Used by scorecard.py and validator.py to apply scheme-specific pass/fail thresholds.
@@ -117,6 +119,11 @@ def get_scheme_benchmarks(scheme: str) -> dict:
 #                 Fixed = overheads (8-12%)
 #                 WC    = stock 30-45 d | debtors 30 d | creditors 30 d
 #
+with (Path(__file__).resolve().parents[2] / "capacity_schedule.json").open(encoding="utf-8") as _capacity_file:
+    DEFAULT_CAPACITY_SCHEDULE = tuple(
+        float(value) / 100 for value in json.load(_capacity_file)["capacity_schedule_pct"]
+    )
+
 INDUSTRY_DEFAULTS = {
     "manufacturing": {
         "cogs_ratio":         0.55,   # raw materials + power + packing
@@ -127,7 +134,7 @@ INDUSTRY_DEFAULTS = {
         "debtor_days":        30,
         "creditor_days":      15,
         "wc_loan_pct":        0.60,
-        "capacity_schedule":  [0.50, 0.60, 0.70, 0.75, 0.80],
+        "capacity_schedule":  DEFAULT_CAPACITY_SCHEDULE,
     },
     "service": {
         "cogs_ratio":         0.10,   # direct cost of service delivery
@@ -138,7 +145,7 @@ INDUSTRY_DEFAULTS = {
         "debtor_days":        30,
         "creditor_days":      15,
         "wc_loan_pct":        0.60,
-        "capacity_schedule":  [0.60, 0.70, 0.80, 0.85, 0.90],
+        "capacity_schedule":  DEFAULT_CAPACITY_SCHEDULE,
     },
     "trading": {
         "cogs_ratio":         0.70,   # purchase price of goods
@@ -149,7 +156,7 @@ INDUSTRY_DEFAULTS = {
         "debtor_days":        0,      # retail = cash sales; wholesale users override manually
         "creditor_days":      30,
         "wc_loan_pct":        0.65,
-        "capacity_schedule":  [0.60, 0.70, 0.80, 0.85, 0.90],
+        "capacity_schedule":  DEFAULT_CAPACITY_SCHEDULE,
     },
     "agriculture": {
         "cogs_ratio":         0.45,
@@ -160,7 +167,7 @@ INDUSTRY_DEFAULTS = {
         "debtor_days":        15,
         "creditor_days":      10,
         "wc_loan_pct":        0.60,
-        "capacity_schedule":  [0.80, 0.85, 0.90, 0.95, 1.00],  # harvest-cycle businesses ramp faster
+        "capacity_schedule":  DEFAULT_CAPACITY_SCHEDULE,
     },
     "default": {
         "cogs_ratio":         0.55,
@@ -171,7 +178,7 @@ INDUSTRY_DEFAULTS = {
         "debtor_days":        30,
         "creditor_days":      15,
         "wc_loan_pct":        0.60,
-        "capacity_schedule":  [0.50, 0.60, 0.70, 0.75, 0.80],
+        "capacity_schedule":  DEFAULT_CAPACITY_SCHEDULE,
     },
 }
 
@@ -814,7 +821,7 @@ def run_dpr(inp):
             frontend_cogs += qty * pprice
             frontend_products.append(p)
 
-    caps=[inp.get("capacity_y1", 0.5),inp.get("capacity_y2", 0.6),inp.get("capacity_y3", 0.7),inp.get("capacity_y4", 0.75),inp.get("capacity_y5", 0.8)]
+    caps=[inp.get(f"capacity_y{i + 1}", DEFAULT_CAPACITY_SCHEDULE[i]) for i in range(5)]
 
     annual_prod_kg=R(inp.get("fresh_leaves_per_day_kg", 0)*inp.get("working_days_per_year", 300)*inp.get("yield_rate", 1),2)
     annual_leaves_kg=R(inp.get("fresh_leaves_per_day_kg", 0)*inp.get("working_days_per_year", 300))
@@ -825,13 +832,10 @@ def run_dpr(inp):
     rm_total=R(rm_leaves+rm_cons+rm_bottles)
 
     if frontend_monthly_rev > 0:
-        revenue_100 = R(frontend_monthly_rev * 12)
-        rm_total = R(frontend_cogs * 12) if frontend_cogs > 0 else rm_total
-        caps[0] = 1.0  # Force capacity to 100% for Year 1 to match exact input
-        caps[1] = max(caps[1], 1.0)
-        caps[2] = max(caps[2], 1.0)
-        caps[3] = max(caps[3], 1.0)
-        caps[4] = max(caps[4], 1.0)
+        capacity_y1 = caps[0] or DEFAULT_CAPACITY_SCHEDULE[0]
+        revenue_100 = R(frontend_monthly_rev * 12 / capacity_y1)
+        if frontend_cogs > 0:
+            rm_total = R(frontend_cogs * 12 / capacity_y1)
 
     promoter_ann=R(inp.get("promoter_daily_wage", 0)*inp.get("working_days_per_year", 300))
     skilled_ann=R(inp.get("skilled_worker_daily_wage", 0)*inp.get("working_days_per_year", 300))
@@ -893,8 +897,12 @@ def run_dpr(inp):
     
     max_term_loan_finance = R(fixed_project_cost * inp["term_loan_pct"], 2) if fixed_project_cost > 0 else 0.0
     fallback_term_loan = R1000(inp["term_loan_pct"] * fixed_project_cost)
-    requested_term_loan = R(inp.get("term_loan_amount", 0) or fallback_term_loan)
-    term_loan = R(min(requested_term_loan, max_term_loan_finance or fixed_project_cost, fixed_project_cost))
+    term_loan_override = inp.get("term_loan_amount_override")
+    if term_loan_override is not None:
+        term_loan = R(min(max(float(term_loan_override), 0), fixed_project_cost), 2)
+    else:
+        requested_term_loan = R(inp.get("term_loan_amount", 0) or fallback_term_loan)
+        term_loan = R(min(requested_term_loan, max_term_loan_finance or fixed_project_cost, fixed_project_cost))
 
     # Fix Prompt 3: Margin Money Treatment
     margin_money = float(scheme.get("margin_money", 0) or 0)
@@ -947,15 +955,23 @@ def run_dpr(inp):
         wc_years_initial.append({"rm_wc":rm_wc,"wip_wc":wip_wc,"fg_wc":fg_wc,"we_wc":we_wc,"total":total})
     wc_y1=R(input_working_capital or wc_years_initial[0]["total"])
     max_wc_bank_finance=R(wc_y1*inp.get("wc_loan_pct", 0.60)) if wc_y1 > 0 else 0.0
-    explicit_wc_loan=R(min(inp.get("working_capital_loan", 0) or 0, max_wc_bank_finance, wc_y1))
-    wc_loan_ratio=(explicit_wc_loan/wc_y1) if wc_y1 > 0 and explicit_wc_loan > 0 else inp.get("wc_loan_pct", 0.60)
+    wc_loan_override = inp.get("working_capital_loan_override")
+    if wc_loan_override is not None:
+        wc_loan_limit = input_working_capital or wc_y1
+        explicit_wc_loan = R(min(max(float(wc_loan_override), 0), wc_loan_limit))
+    else:
+        explicit_wc_loan=R(min(inp.get("working_capital_loan", 0) or 0, max_wc_bank_finance, wc_y1))
+    if wc_loan_override is not None:
+        wc_loan_ratio = explicit_wc_loan / wc_y1 if wc_y1 > 0 else 0.0
+    else:
+        wc_loan_ratio=(explicit_wc_loan/wc_y1) if wc_y1 > 0 and explicit_wc_loan > 0 else inp.get("wc_loan_pct", 0.60)
     wc_years=[]
     for i,cy in enumerate(cop):
         w = wc_years_initial[i]
         bank=R(w["total"]*wc_loan_ratio)
         wc_years.append({"year":cy["year"],"rm_wc":w["rm_wc"],"wip_wc":w["wip_wc"],"fg_wc":w["fg_wc"],"we_wc":w["we_wc"],
                           "total":w["total"],"bank_loan":bank,"margin":R(w["total"]-bank),
-                          "wc_interest":R(bank*inp.get("wc_interest_rate", 0.12))})
+                          "wc_interest":R(bank*resolve_wc_interest_rate(inp.get("wc_interest_rate")))})
     # Fix Prompt 4: P&L Structure (No double counting)
     # Bug 3 & 4: Total Expenses & PAT (No double counting)
     cumulative = 0.0
@@ -992,7 +1008,10 @@ def run_dpr(inp):
     # Bug 1 & 7: MoF Reconciliation (Promoter + Term Loan + WC must equal total)
     # Total Project Cost = All assets + WC Margin + WC Bank Share
     total_proj = R(fixed_project_cost + promoter_working_capital + wc_bank_y1, 2)
-    equity = R(total_proj - term_loan - wc_bank_y1, 2)
+    equity_override = inp.get("promoter_contribution_override")
+    equity = R(max(float(equity_override), 0), 2) if equity_override is not None else R(total_proj - term_loan - wc_bank_y1, 2)
+    if equity_override is not None:
+        total_proj = R(term_loan + wc_bank_y1 + equity, 2)
     
     # Update breakdown with the correct WC parts
     project_cost_items = synced_project_cost_items + [
@@ -1080,6 +1099,8 @@ def run_dpr(inp):
         
         contrib = R(cy["revenue"] - var, 2)
         contrib_pct = round(contrib / cy["revenue"], 4) if cy["revenue"] > 0 else 0
+        operating_fixed = R(cy["depreciation"] + cy["wc_interest"] + cy["tl_interest"], 2)
+        net_profit = R(contrib - operating_fixed, 2)
         
         bep_sales = R(fix / contrib_pct, 2) if contrib_pct > 0 else 0.0
         bep_not_achievable = (var > cy["revenue"] or contrib <= 0)
@@ -1093,6 +1114,8 @@ def run_dpr(inp):
             "fixed_expenses": fix,
             "contribution": contrib,
             "contribution_pct": contrib_pct,
+            "operating_fixed_expenses": operating_fixed,
+            "net_profit": net_profit,
             "bep_sales": bep_sales,
             "bep_pct": round(bep_sales / (revenue_100 if revenue_100 > 0 else cy["revenue"]) * 100, 2) if bep_sales > 0 else 0,
             "margin_of_safety": margin_of_safety,
@@ -1399,8 +1422,18 @@ def run_cma(inp):
     total_proj_cost = R(fixed_project_cost + input_working_capital, 2)
     max_term_loan_finance=R(fixed_project_cost*inp["term_loan_pct"]) if fixed_project_cost > 0 else 0.0
     max_wc_bank_finance=R(input_working_capital*inp["wc_loan_pct"]) if input_working_capital > 0 else 0.0
-    term_loan = R(min(inp.get("term_loan_amount", 0) or max_term_loan_finance, max_term_loan_finance or fixed_project_cost, fixed_project_cost), 2)
-    wc_loan = R(min(inp.get("working_capital_loan", 0) or max_wc_bank_finance, max_wc_bank_finance or input_working_capital, input_working_capital), 2)
+    term_loan_override = inp.get("term_loan_amount_override")
+    term_loan = (
+        R(min(max(float(term_loan_override), 0), fixed_project_cost), 2)
+        if term_loan_override is not None
+        else R(min(inp.get("term_loan_amount", 0) or max_term_loan_finance, max_term_loan_finance or fixed_project_cost, fixed_project_cost), 2)
+    )
+    wc_loan_override = inp.get("working_capital_loan_override")
+    wc_loan = (
+        R(min(max(float(wc_loan_override), 0), input_working_capital), 2)
+        if wc_loan_override is not None
+        else R(input_working_capital, 2)
+    )
     total_loan = R(term_loan + wc_loan, 2)
     monthly_sched,emi=calc_amortization(total_loan,inp["loan_interest_rate_pct"],inp["tenure_months"])
     yr_sched=yearly_amortization(monthly_sched,inp["tenure_months"])
@@ -1422,28 +1455,48 @@ def run_cma(inp):
     cash_min=inp["minimum_cash_balance"]; total_ca=stock_req+debtors+cash_min
     creditors=daily_exp*inp["creditor_days"]; total_cl=creditors+emi
     net_wc=total_ca-total_cl; curr_ratio=total_ca/total_cl if total_cl else 0
-    projections=[]; rev=annual_rev; sal=fixed_salary*12; cogs=cogs_monthly*12
+    capacity_schedule = [
+        float(inp.get(f"capacity_y{i + 1}") or DEFAULT_CAPACITY_SCHEDULE[i])
+        for i in range(5)
+    ]
+    capacity_y1 = capacity_schedule[0]
+    revenue_at_100pct = annual_rev / capacity_y1
+    cogs_at_100pct = cogs_monthly * 12 / capacity_y1
+    projections=[]; sal=fixed_salary*12; cogs=cogs_monthly*12
     adm=(inp["rent"]+inp["stationery"]+inp["electricity_water"]+inp["repair_maintenance"]+
          inp["transport_conveyance"]+inp["telephone_internet"]+inp["miscellaneous"])*12
     mkt=mktg_monthly*12; dep=annual_dep
     rev_g=inp["revenue_growth_pct"]/100; sal_g=inp["salary_increase_pct"]/100; adm_g=inp["admin_increase_pct"]/100
-    for y in range(1,6):
+    for y, capacity in enumerate(capacity_schedule, start=1):
         if y>1:
-            rev*=(1+rev_g); cogs*=(1+rev_g); sal*=(1+sal_g); adm*=(1+adm_g)
-            mkt=rev*mktg_pct/100 if mktg_pct>0 else mkt*(1+adm_g)
+            sal*=(1+sal_g); adm*=(1+adm_g)
             dep*=(1-inp["cma_dep_rate_pct"]/100)
+        rev = revenue_at_100pct * capacity * (1 + rev_g) ** (y - 1)
+        cogs = cogs_at_100pct * capacity * (1 + rev_g) ** (y - 1)
+        mkt=rev*mktg_pct/100 if mktg_pct>0 else (mktg_monthly*12)*(1+adm_g)**(y-1)
         exp=cogs+sal+adm+mkt
         yr_int=yr_sched[y-1]["interest_paid"] if y<=len(yr_sched) else 0
         yr_emi=yr_sched[y-1]["emi_paid"] if y<=len(yr_sched) else 0
         yr_ebitda=rev-exp; yr_ebit=yr_ebitda-dep; yr_pbt=yr_ebit-yr_int
         yr_tax=max(yr_pbt*inp["tax_rate_pct"]/100,0); yr_pat=yr_pbt-yr_tax; yr_net=yr_pat-yr_emi
         yr_dscr=yr_ebitda/yr_emi if yr_emi else 0
-        projections.append({"year":y,"sales":R(rev,2),"expenses":R(exp,2),"ebitda":R(yr_ebitda,2),
+        projections.append({"year":y,"capacity":capacity,"sales":R(rev,2),"expenses":R(exp,2),"ebitda":R(yr_ebitda,2),
                              "depreciation":R(dep,2),"interest":R(yr_int,2),"profit_before_tax":R(yr_pbt,2),
                              "tax":R(yr_tax,2),"profit_after_tax":R(yr_pat,2),"emi_paid":R(yr_emi,2),
                              "net_surplus":R(yr_net,2),"dscr":R(yr_dscr,2)})
     avg_dscr=sum(p["dscr"] for p in projections)/len(projections) if projections else 0
-    promoter_contribution=R(max(total_proj_cost-total_loan, 0))
+    promoter_override = inp.get("promoter_contribution_override")
+    promoter_contribution = (
+        R(max(float(promoter_override), 0), 2)
+        if promoter_override is not None
+        else R(max(total_proj_cost-total_loan, 0))
+    )
+    if any(inp.get(key) is not None for key in (
+        "term_loan_amount_override",
+        "working_capital_loan_override",
+        "promoter_contribution_override",
+    )):
+        total_proj_cost = R(term_loan + wc_loan + promoter_contribution, 2)
     prom_pct=(promoter_contribution/total_proj_cost*100) if total_proj_cost else 0
     scorecard,total_score=calculate_scorecard(inp, dscr_y1, roi_ebitda, be_months, prom_pct)
     # Bug 5: Sensitivity in run_cma must scale COGS
@@ -1578,7 +1631,7 @@ def validate_cma_dpr(inp, cma, dpr):
     """
     PDF Consistency Validator — run before rendering.
     Asserts:
-      1. Means of Finance total == Total Project Cost (composite)
+    1. Term Loan + WC Facility + Promoter Contribution == Total Project Cost
       2. Salary progression matches salary_increase_pct assumption
       3. PAT matches Revenue − Total Expenses for each year
       4. Sensitivity is monotonically sane (higher revenue → better profit)
@@ -1588,17 +1641,17 @@ def validate_cma_dpr(inp, cma, dpr):
 
     # ── 1. Means of Finance reconciliation ───────────────────────────
     pc = dpr.get("project_cost", {})
-    # WC bank loan is a revolving facility — NOT part of the project Means of
-    # Finance, which reconciles to Total Project Cost (= fixed + WC margin).
-    # promoter_contribution already includes the promoter's WC margin.
+    # Include the revolving WC facility in Total Project Cost; the separate
+    # scheme subsidy remains an additional funding source, not promoter money.
     promoter  = float(cma.get("promoter_contribution", pc.get("equity_capital", 0)) or 0)
     term_loan = float(cma.get("term_loan", pc.get("term_loan", 0)) or 0)
-    margin    = float(cma.get("margin_money", pc.get("margin_money", 0)) or 0)
-    mof_sum   = R(promoter + term_loan + margin, 2)
+    wc_loan   = float(cma.get("working_capital_loan", pc.get("wc_loan", 0)) or 0)
+    mof_sum   = R(promoter + term_loan + wc_loan, 2)
     proj_cost = float(cma.get("total_project_cost", pc.get("total_project_cost", 0)) or 0)
     if proj_cost > 0 and abs(mof_sum - proj_cost) > 100:
         warnings.append(
-            f"VALIDATOR[MoF]: Means of Finance sum ({mof_sum:,.0f}) ≠ Total Project Cost ({proj_cost:,.0f}). "
+            f"VALIDATOR[Funding]: Term Loan + WC Facility + Promoter Contribution ({mof_sum:,.0f}) "
+            f"≠ Total Project Cost ({proj_cost:,.0f}). "
             f"Diff = {abs(mof_sum - proj_cost):,.0f}. Check promoter/loan split."
         )
 

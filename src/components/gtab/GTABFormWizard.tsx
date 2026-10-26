@@ -742,8 +742,8 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
   // Calculate totals
   const calculateTotals = (data: GTABFormData = formData) => {
     // getFinancingPlan (→ getProjectCostBreakdown) is the single source of
-    // truth for Total Project Cost: Fixed Capital + promoter's WC margin
-    // only — never the full WC requirement. Don't duplicate that formula here.
+    // truth for Total Project Cost: term loan + working capital facility +
+    // promoter contribution. Do not duplicate that formula here.
     const financingPlan = getFinancingPlan(data);
     const normalizedProjectCost = financingPlan.totalProjectCost;
     const marginMoney = financingPlan.promoterContribution;

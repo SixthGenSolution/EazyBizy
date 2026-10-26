@@ -49,3 +49,13 @@ Thumbs.db
 
 memory/
 samples/
+
+# Local environments and generated files
+.env
+.env.*
+!.env.example
+.venv/
+.venv_*/
+backend/.venv/
+backend/.venv_*/
+.vite/

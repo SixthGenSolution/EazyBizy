@@ -20,7 +20,7 @@ const pythonCandidates = isWin
       "python3",
     ]
   : [
-      resolve("backend", ".venv", "bin", "python3"),
+      resolve("backend", ".venv_oct", "bin", "python3"),
       resolve("backend", ".venv", "bin", "python"),
       resolve(".venv",   "bin",   "python3"),
       resolve(".venv",   "bin",   "python"),

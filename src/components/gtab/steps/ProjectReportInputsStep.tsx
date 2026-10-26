@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -23,6 +24,12 @@ import SectionTitle from "@/components/gtab/SectionTitle";
 import { getMonthlyWorkingCapital } from "@/lib/workingCapital";
 import { getStep9Tips } from "@/lib/caGuidance";
 import { buildLoanSchedule } from "@/lib/loanSchedule";
+import {
+  CAPACITY_SCHEDULE,
+  getDefaultCapacitySchedule,
+  isValidCapacitySchedule,
+} from "@/lib/capacitySchedule";
+import { DEFAULT_WC_INTEREST_RATE_PCT } from "@/lib/financialDefaults";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,6 +164,15 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
   const isService = formData.industry_type === "service";
   const isAgriculture = formData.industry_type === "agriculture";
   const report = formData.project_report_inputs;
+  const projectDurationYears = Math.max(1, Math.min(Math.ceil(Number(report.loan.tenure_months || 60) / 12), 20));
+  const defaultCapacitySchedule = getDefaultCapacitySchedule(projectDurationYears);
+  const capacitySchedule = Array.isArray(report.dpr.capacity_schedule_pct) &&
+    report.dpr.capacity_schedule_pct.length === projectDurationYears &&
+    isValidCapacitySchedule(report.dpr.capacity_schedule_pct)
+    ? report.dpr.capacity_schedule_pct
+    : defaultCapacitySchedule;
+  const [capacityDrafts, setCapacityDrafts] = useState<Record<number, string>>({});
+  const [capacityErrors, setCapacityErrors] = useState<Record<number, string>>({});
   const monthlyWorkingCapital = getMonthlyWorkingCapital(
     Number(formData.working_capital_required || 0),
     formData.working_capital_period,
@@ -182,6 +198,69 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
         ...updates,
       },
     } as Partial<ProjectReportInputs>);
+  };
+
+  const updateProjectDuration = (tenureMonths: number) => {
+    const nextDuration = Math.max(1, Math.min(Math.ceil(tenureMonths / 12), 20));
+    const currentDuration = projectDurationYears;
+    const currentSchedule = capacitySchedule;
+    const currentDefaults = getDefaultCapacitySchedule(currentDuration);
+    const nextDefaults = getDefaultCapacitySchedule(nextDuration);
+    const isCurrentDefault = currentSchedule.length === currentDefaults.length &&
+      currentSchedule.every((capacity, index) => capacity === currentDefaults[index]);
+    const nextSchedule = isCurrentDefault
+      ? nextDefaults
+      : Array.from({ length: nextDuration }, (_, index) =>
+          currentSchedule[index] ?? nextDefaults[index] ?? 100,
+        );
+
+    setCapacityDrafts({});
+    setCapacityErrors({});
+    updateReport({
+      loan: { ...report.loan, tenure_months: tenureMonths },
+      dpr: {
+        ...report.dpr,
+        capacity_schedule_pct: nextSchedule,
+        capacity_y1_pct: nextSchedule[0] ?? 0,
+        capacity_y2_pct: nextSchedule[1] ?? 0,
+        capacity_y3_pct: nextSchedule[2] ?? 0,
+        capacity_y4_pct: nextSchedule[3] ?? 0,
+        capacity_y5_pct: nextSchedule[4] ?? 0,
+      },
+    });
+  };
+
+  const updateCapacityForYear = (yearIndex: number, rawValue: string) => {
+    const capacity = Number(rawValue);
+    if (rawValue.trim() === "" || !Number.isFinite(capacity) || capacity < 0 || capacity > 100) {
+      setCapacityDrafts((drafts) => ({ ...drafts, [yearIndex]: rawValue }));
+      setCapacityErrors((errors) => ({
+        ...errors,
+        [yearIndex]: "Enter a numeric percentage from 0 to 100.",
+      }));
+      return;
+    }
+
+    const nextSchedule = [...capacitySchedule];
+    nextSchedule[yearIndex] = capacity;
+    updateSection("dpr", {
+      capacity_schedule_pct: nextSchedule,
+      capacity_y1_pct: nextSchedule[0] ?? 0,
+      capacity_y2_pct: nextSchedule[1] ?? 0,
+      capacity_y3_pct: nextSchedule[2] ?? 0,
+      capacity_y4_pct: nextSchedule[3] ?? 0,
+      capacity_y5_pct: nextSchedule[4] ?? 0,
+    });
+    setCapacityDrafts((drafts) => {
+      const next = { ...drafts };
+      delete next[yearIndex];
+      return next;
+    });
+    setCapacityErrors((errors) => {
+      const next = { ...errors };
+      delete next[yearIndex];
+      return next;
+    });
   };
 
   const handleBankFinancePctChange = (value: number) => {
@@ -308,13 +387,6 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
     });
   };
 
-  // ── Industry-specific capacity defaults (no hardcodes) ─────────────────────
-  const isServiceOrTrading = isService || isTrading;
-  const capacityDefaults: Record<number, number> = isServiceOrTrading
-    ? { 1: 60, 2: 70, 3: 80, 4: 85, 5: 90 }
-    : isAgriculture
-      ? { 1: 80, 2: 85, 3: 90, 4: 95, 5: 100 }
-      : { 1: 50, 2: 60, 3: 70, 4: 75, 5: 80 };
 
   return (
     <div className="mx-auto max-w-none space-y-4 sm:space-y-6">
@@ -365,8 +437,8 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             const ratePresets: number[] = isPMEGP
               ? [11, 12, 13, 14.5]
               : isMudra
-                ? [10, 10.5, 11, 12]
-                : [10, 10.5, 11, 12, 13];
+                ? [10, 9.5, 11, 12]
+                : [10, 9.5, 11, 12, 13];
 
             // Auto collateral text per scheme
             const autoCollateral = isPMEGP
@@ -385,7 +457,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             // half-yearly principal instalments, with interest recalculated
             // on the declining balance each half-year.
             const loanAmt   = financingPlan.termLoanAmount;
-            const rate      = Number(report.loan.interest_rate_pct || 10.5);
+            const rate      = Number(report.loan.interest_rate_pct || 9.5);
             const tenure    = Number(report.loan.tenure_months || 60);
             const morat     = Number(report.loan.moratorium_months || 0);
             const fullSchedule    = buildLoanSchedule(loanAmt, rate, tenure, morat);
@@ -486,7 +558,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
                   <div className="space-y-2">
                     <Label>Annual Interest Rate %</Label>
                     <Input type="number" className="h-11 rounded-xl" placeholder="e.g. 12"
-                      value={report.loan.interest_rate_pct || ""}
+                      value={report.loan.interest_rate_pct ?? 9.5}
                       onChange={(e) => updateSection("loan", { interest_rate_pct: parseFloat(e.target.value) || 0 })} />
                     <div className="flex gap-1 flex-wrap">
                       {ratePresets.map(v => (
@@ -499,16 +571,28 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label>Working Capital Interest Rate %</Label>
+                    <Input type="number" className="h-11 rounded-xl" placeholder="e.g. 11.5"
+                      value={report.loan.wc_interest_rate_pct ?? ""}
+                      onChange={(e) => updateSection("loan", {
+                        wc_interest_rate_pct: e.target.value === "" ? null : Number(e.target.value),
+                      })} />
+                    <p className="text-xs text-muted-foreground">
+                      Used for working-capital interest in the CMA projections. Defaults to {DEFAULT_WC_INTEREST_RATE_PCT}% when left blank.
+                    </p>
+                  </div>
+
                   {/* Tenure — free entry (banks vary; presets are shortcuts, not a cap) */}
                   <div className="space-y-2">
-                    <Label>Loan Tenure (months)</Label>
+                    <Label>Project Duration / Loan Tenure (months)</Label>
                     <Input type="number" className="h-11 rounded-xl" min={1}
                       value={report.loan.tenure_months || 60}
-                      onChange={(e) => updateSection("loan", { tenure_months: Math.max(Number(e.target.value) || 0, 1) })} />
+                      onChange={(e) => updateProjectDuration(Math.max(Number(e.target.value) || 0, 1))} />
                     <div className="flex gap-1 flex-wrap">
                       {[24, 36, 48, 60, 72, 84, 96, 120].map(m => (
                         <button key={m} type="button"
-                          onClick={() => updateSection("loan", { tenure_months: m })}
+                          onClick={() => updateProjectDuration(m)}
                           className={`px-2 py-0.5 rounded text-xs font-medium border transition ${Number(report.loan.tenure_months) === m ? "bg-primary text-white border-primary" : "border-primary/30 text-primary hover:bg-primary/10"}`}>
                           {m}mo
                         </button>
@@ -517,6 +601,65 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
                     <p className="text-xs text-muted-foreground">
                       {isPMEGP ? "PMEGP standard: 3–5 years" : isMudra ? "Mudra: upto 5 years" : "MSME standard: 5–7 years"} — enter any tenure your bank has actually sanctioned.
                     </p>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                    <div>
+                      <Label>Yearly Capacity Utilisation (%) — {projectDurationYears} years</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Edit each year from 0 to 100%. Projected Revenue = 100% Capacity Revenue × Capacity Percentage / 100.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      {capacitySchedule.map((capacity, yearIndex) => (
+                        <div key={yearIndex} className="space-y-1">
+                          <Label htmlFor={`capacity-year-${yearIndex + 1}`} className="text-xs">
+                            Year {yearIndex + 1} Capacity %
+                          </Label>
+                          <Input
+                            id={`capacity-year-${yearIndex + 1}`}
+                            aria-label={`Year ${yearIndex + 1} capacity percentage`}
+                            aria-invalid={Boolean(capacityErrors[yearIndex])}
+                            aria-describedby={capacityErrors[yearIndex] ? `capacity-error-${yearIndex + 1}` : undefined}
+                            type="number"
+                            min={0}
+                            max={100}
+                            step="0.1"
+                            value={capacityDrafts[yearIndex] ?? capacity}
+                            onChange={(event) => updateCapacityForYear(yearIndex, event.target.value)}
+                          />
+                          {capacityErrors[yearIndex] && (
+                            <p id={`capacity-error-${yearIndex + 1}`} className="text-xs text-destructive">
+                              {capacityErrors[yearIndex]}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {(() => {
+                      const productMonthlyRevenue = report.revenue.product_categories.reduce((sum, product) => {
+                        const monthlyRevenue = Number(product.fixed_revenue) ||
+                          Number(product.units_monthly || 0) * Number(product.selling_price || product.avg_price || 0);
+                        const months = Math.min(Math.max(Number(product.number_of_months) || 12, 1), 12);
+                        return sum + monthlyRevenue * months / 12;
+                      }, 0);
+                      const capacityRevenue100 = productMonthlyRevenue > 0
+                        ? productMonthlyRevenue * 12 / (capacitySchedule[0] > 0 ? capacitySchedule[0] / 100 : 1)
+                        : (Number(report.dpr.input_qty_per_day || report.dpr.fresh_leaves_per_day_kg || 0) *
+                          (Number(report.dpr.yield_rate_pct || 100) / 100) *
+                          Number(report.dpr.working_days_per_year || 300) *
+                          Number(report.dpr.selling_price_per_unit || report.dpr.selling_price_per_kg || 0));
+                      return capacityRevenue100 > 0 ? (
+                        <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
+                          {capacitySchedule.map((capacity, yearIndex) => (
+                            <p key={yearIndex}>
+                              Year {yearIndex + 1} projected revenue: Rs.{" "}
+                              {Math.round(capacityRevenue100 * capacity / 100).toLocaleString("en-IN")}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Moratorium — free entry, presets are shortcuts only */}
@@ -1359,12 +1502,12 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
                       </div>
                       <div className="text-xs text-teal-700">
                         Annual Output: <strong>{Math.round(inputQty * yield_ * workingDays).toLocaleString("en-IN")} units</strong>
-                        &nbsp;|&nbsp; Year 1 Revenue (at {report.dpr.capacity_y1_pct || 50}%): Rs. {Math.round(calcAnnualRev * ((report.dpr.capacity_y1_pct || 50) / 100)).toLocaleString("en-IN")}
-                        &nbsp;|&nbsp; Year 5 Revenue (at {report.dpr.capacity_y5_pct || 80}%): Rs. {Math.round(calcAnnualRev * ((report.dpr.capacity_y5_pct || 80) / 100) * Math.pow(1 + (report.revenue.revenue_growth_pct || 7) / 100, 4)).toLocaleString("en-IN")}
+                        &nbsp;|&nbsp; Year 1 Revenue (at {capacitySchedule[0]}%): Rs. {Math.round(calcAnnualRev * (capacitySchedule[0] / 100)).toLocaleString("en-IN")}
+                        &nbsp;|&nbsp; Year 5 Revenue (at {capacitySchedule[Math.min(4, capacitySchedule.length - 1)]}%): Rs. {Math.round(calcAnnualRev * (capacitySchedule[Math.min(4, capacitySchedule.length - 1)] / 100) * Math.pow(1 + (report.revenue.revenue_growth_pct || 7) / 100, 4)).toLocaleString("en-IN")}
                       </div>
                       {isAgriculture && (
                         <div className="text-xs text-teal-600 mt-1">
-                          Agriculture note: For agriculture businesses, capacity is typically set at 100% from Year 1 since production follows seasonal/harvest cycles.
+                          Agriculture production is seasonal; adjust annual utilization to reflect expected output.
                         </div>
                       )}
                     </div>
@@ -1397,7 +1540,7 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             <p>• Tax Rate 25% — illustrative effective-tax assumption; actual tax depends on the applicant's business constitution (a Proprietorship is taxed at the proprietor's individual slab rates) and must be confirmed by a CA</p>
             <p>• Revenue Growth 7% p.a. · Fixed Expense Growth 5% p.a. · Salary Hike 10% p.a. · DSCR benchmark ≥ 1.25</p>
             <p>• Contingency on P&amp;M 5–10% — a cost-overrun buffer banks expect on new machinery purchases</p>
-            <p>• {isServiceOrTrading ? "Service/Trading Capacity: 60→70→80→85→90%" : isAgriculture ? "Agriculture Capacity: 80→85→90→95→100%" : "Manufacturing Capacity: 50→60→70→75→80%"}</p>
+            <p>• Default capacity schedule: {CAPACITY_SCHEDULE.join("→")}%</p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
@@ -1459,31 +1602,10 @@ const ProjectReportInputsStep = ({ formData, updateFormData }: ProjectReportInpu
             Cost-overrun buffer added on top of machinery cost before depreciation — CA standard is 5–10% for new equipment purchases. 0 = none.
           </p>
 
-          {/* Capacity Utilization — industry-aware defaults, no hardcodes */}
+          {/* The editable schedule lives with the project-duration selector above. */}
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 space-y-1">
-            <p><strong>Capacity Utilization Schedule</strong> — Directly sets Year 1-5 revenue. Banks scrutinize this carefully.</p>
-            <p>Keep Year 1 conservative — banks know a new business cannot run at 100% from Day 1.
-            {isServiceOrTrading ? " Trading/Service default: 60→70→80→85→90%." : isAgriculture ? " Agriculture default: 80→85→90→95→100%." : " Manufacturing default: 50→60→70→75→80%."}</p>
-          </div>
-          <div className="grid grid-cols-5 gap-3">
-            {[1, 2, 3, 4, 5].map((yr) => {
-              const key = `capacity_y${yr}_pct` as keyof typeof report.dpr;
-              const defaultVal = capacityDefaults[yr];
-              return (
-                <div key={yr} className="space-y-2">
-                  <Label className="text-xs font-semibold">Year {yr} %</Label>
-                  <Input
-                    type="number"
-                    className="h-11 rounded-xl text-center font-semibold"
-                    value={Number(report.dpr[key]) || defaultVal}
-                    min={1}
-                    max={100}
-                    onChange={(e) => updateSection("dpr", { [key]: Number(e.target.value) || defaultVal } as any)}
-                  />
-                  <p className="text-xs text-center text-muted-foreground">Y{yr}: {Number(report.dpr[key]) || defaultVal}%</p>
-                </div>
-              );
-            })}
+            <p><strong>Capacity Utilization Schedule</strong> — Edit the yearly percentages in the Project Duration section above.</p>
+            <p>Defaults are duration-based: 5 years ({getDefaultCapacitySchedule(5).join("→")}%) or 7 years ({getDefaultCapacitySchedule(7).join("→")}%).</p>
           </div>
 
         </CardContent>

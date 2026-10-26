@@ -14,6 +14,11 @@ import { getSchemeRules } from "@/lib/schemeRulesStore";
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(Number(value || 0), min), max);
 
+const useAmountOverride = (override: number | undefined, calculated: number) =>
+  override !== undefined && Number.isFinite(Number(override))
+    ? Math.max(Number(override), 0)
+    : calculated;
+
 const titleize = (value?: string | null) =>
   value
     ? value
@@ -31,6 +36,8 @@ const getLoanType = (loanPurpose: GTABFormData["loan_purpose"]): ProjectReportIn
 };
 
 export const getProjectCostBreakdown = (formData: GTABFormData) => {
+  const dpr = mergeProjectReportInputs(formData.project_report_inputs).dpr;
+  const includesTermLoan = formData.loan_purpose !== "working_capital";
   const includesWorkingCapital = formData.loan_purpose !== "term_loan";
   const monthlyWorkingCapital = getMonthlyWorkingCapital(
     Number(formData.working_capital_required || 0),
@@ -60,15 +67,53 @@ export const getProjectCostBreakdown = (formData: GTABFormData) => {
     Number(formData.transportation_cost || 0) +
     Number(formData.other_initial_expenditure || 0);
 
-  // CA convention (matches backend schemes/router.py): Total Project Cost =
-  // Fixed Capital + promoter's WC margin. The WC bank loan is a REVOLVING
-  // facility, shown separately and NOT part of project cost. Project MoF then
-  // tallies as: promoter contribution + term loan (+ subsidy) = project cost.
+  // Total project cost is the actual funding stack the applicant is using:
+  // Term Loan Requested + Working Capital Facility Requested + Promoter Contribution.
+  // The WC facility is a bank loan, not a hidden cost item, and the promoter
+  // contribution must include both the fixed-capital equity and the WC margin.
+  const termLoanBankFinancePct = getBankFinancePct(formData);
+  const wcBankFinancePct = getWorkingCapitalBankFinancePct(formData);
+
+  let termLoanAmount = 0;
+  let promoterProjectContribution = 0;
+
+  if (formData.loan_scheme === "pmegp") {
+    const pmegpSubsidyAmount = includesTermLoan
+      ? calculatePMEGPSubsidy(fixedAssetCost, formData.social_category, formData.area_type || "urban")
+      : 0;
+    promoterProjectContribution = includesTermLoan
+      ? calculatePMEGPPromoterContribution(fixedAssetCost, formData.social_category)
+      : 0;
+    termLoanAmount = includesTermLoan
+      ? calculatePMEGPBankFinance(fixedAssetCost, pmegpSubsidyAmount, promoterProjectContribution)
+      : 0;
+  } else {
+    termLoanAmount = includesTermLoan
+      ? Number(((fixedAssetCost * termLoanBankFinancePct) / 100).toFixed(2))
+      : 0;
+    promoterProjectContribution = Number(Math.max(fixedAssetCost - termLoanAmount, 0).toFixed(2));
+  }
+  termLoanAmount = useAmountOverride(dpr.term_loan_amount_override, termLoanAmount);
+
+  const calculatedWorkingCapitalLoan = includesWorkingCapital
+    ? Number(((monthlyWorkingCapital * wcBankFinancePct) / 100).toFixed(2))
+    : 0;
+  const workingCapitalLoan = useAmountOverride(dpr.working_capital_loan_override, calculatedWorkingCapitalLoan);
+
+  const calculatedPromoterContribution = Number(
+    (promoterProjectContribution + promoterWorkingCapitalContribution).toFixed(2),
+  );
+  const promoterContribution = useAmountOverride(dpr.promoter_contribution_override, calculatedPromoterContribution);
+
   return {
     fixedAssetCost,
     monthlyWorkingCapital,
     promoterWorkingCapitalContribution,
-    totalProjectCost: Number((fixedAssetCost + promoterWorkingCapitalContribution).toFixed(2)),
+    promoterProjectContribution,
+    promoterContribution,
+    termLoanAmount,
+    workingCapitalLoan,
+    totalProjectCost: Number((termLoanAmount + workingCapitalLoan + promoterContribution).toFixed(2)),
   };
 };
 
@@ -141,13 +186,16 @@ const getConfiguredPromoterEquityPct = (formData: GTABFormData) => {
 };
 
 export const getFinancingPlan = (formData: GTABFormData) => {
+  const projectCostBreakdown = getProjectCostBreakdown(formData);
   const {
     fixedAssetCost,
     monthlyWorkingCapital,
     promoterWorkingCapitalContribution,
     totalProjectCost,
-  } = getProjectCostBreakdown(formData);
-  const wcBankFinancePct = getWorkingCapitalBankFinancePct(formData);
+    workingCapitalLoan,
+    promoterContribution,
+  } = projectCostBreakdown;
+  let wcBankFinancePct = getWorkingCapitalBankFinancePct(formData);
   const includesTermLoan = formData.loan_purpose !== "working_capital";
   const includesWorkingCapital = formData.loan_purpose !== "term_loan";
 
@@ -156,6 +204,7 @@ export const getFinancingPlan = (formData: GTABFormData) => {
   let termLoanAmount = 0;
   let termLoanBankFinancePct = 0;
   let promoterProjectContribution = 0;
+  let schemePMEGPSubsidyAmount = 0;
   let pmegpSubsidyAmount = 0;
 
   if (isPMEGP) {
@@ -164,14 +213,14 @@ export const getFinancingPlan = (formData: GTABFormData) => {
     // + Promoter's own contribution (5%/10% by category) + Bank Term Loan
     // (the residual). See loanRulesEngine.ts calculatePMEGP* for the verified
     // formula (matches backend/schemes/pmegp.py).
-    pmegpSubsidyAmount = includesTermLoan
+    schemePMEGPSubsidyAmount = includesTermLoan
       ? calculatePMEGPSubsidy(fixedAssetCost, formData.social_category, formData.area_type || "urban")
       : 0;
     promoterProjectContribution = includesTermLoan
       ? calculatePMEGPPromoterContribution(fixedAssetCost, formData.social_category)
       : 0;
     termLoanAmount = includesTermLoan
-      ? calculatePMEGPBankFinance(fixedAssetCost, pmegpSubsidyAmount, promoterProjectContribution)
+      ? calculatePMEGPBankFinance(fixedAssetCost, schemePMEGPSubsidyAmount, promoterProjectContribution)
       : 0;
     termLoanBankFinancePct = fixedAssetCost > 0
       ? Number(((termLoanAmount / fixedAssetCost) * 100).toFixed(2))
@@ -188,14 +237,27 @@ export const getFinancingPlan = (formData: GTABFormData) => {
     );
   }
 
-  const workingCapitalLoan = includesWorkingCapital
-    ? Number(((monthlyWorkingCapital * wcBankFinancePct) / 100).toFixed(2))
-    : 0;
+  const dpr = mergeProjectReportInputs(formData.project_report_inputs).dpr;
+  const hasTermLoanOverride = dpr.term_loan_amount_override !== undefined;
+  const hasWorkingCapitalLoanOverride = dpr.working_capital_loan_override !== undefined;
+  const schemeTermLoanAmount = isPMEGP
+    ? calculatePMEGPBankFinance(fixedAssetCost, schemePMEGPSubsidyAmount, promoterProjectContribution)
+    : termLoanAmount;
+  termLoanAmount = useAmountOverride(dpr.term_loan_amount_override, termLoanAmount);
+  if (hasTermLoanOverride) {
+    termLoanBankFinancePct = fixedAssetCost > 0
+      ? Number(((termLoanAmount / fixedAssetCost) * 100).toFixed(2))
+      : 0;
+  }
+
+  if (isPMEGP) pmegpSubsidyAmount = schemePMEGPSubsidyAmount;
+  pmegpSubsidyAmount = useAmountOverride(dpr.margin_money_override, pmegpSubsidyAmount);
+  if (hasWorkingCapitalLoanOverride) {
+    wcBankFinancePct = monthlyWorkingCapital > 0
+      ? Number(((workingCapitalLoan / monthlyWorkingCapital) * 100).toFixed(2))
+      : 0;
+  }
   const totalBankFinance = Number((termLoanAmount + workingCapitalLoan).toFixed(2));
-  // Total promoter contribution = fixed equity (or PMEGP promoter %) + WC margin
-  const promoterContribution = Number(
-    (promoterProjectContribution + promoterWorkingCapitalContribution).toFixed(2),
-  );
   const totalFundingBase = Number((promoterContribution + totalBankFinance + pmegpSubsidyAmount).toFixed(2));
   const promoterEquityPct = totalProjectCost
     ? Number(((promoterContribution / totalProjectCost) * 100).toFixed(2))
@@ -204,12 +266,11 @@ export const getFinancingPlan = (formData: GTABFormData) => {
     ? Number(((termLoanAmount / totalProjectCost) * 100).toFixed(2))
     : 0;
 
-  // Invariant: Project Cost = project Means of Finance = promoter contribution
-  // + term loan + PMEGP subsidy (WC bank loan is a separate revolving
-  // facility, excluded from project cost).
-  const projectMeansOfFinance = Number((promoterContribution + termLoanAmount + pmegpSubsidyAmount).toFixed(2));
+  // Invariant: total project cost = term loan + WC facility + promoter contribution.
+  // PMEGP subsidy is a separate margin-money source and is not added to project cost.
+  const projectMeansOfFinance = Number((termLoanAmount + workingCapitalLoan + promoterContribution).toFixed(2));
   if (import.meta.env?.DEV && Math.abs(totalProjectCost - projectMeansOfFinance) > 1) {
-    console.warn("[projectReport] Project cost ≠ Means of Finance", { totalProjectCost, projectMeansOfFinance });
+    console.warn("[projectReport] Project cost ≠ Term Loan + WC Facility + Promoter Contribution", { totalProjectCost, projectMeansOfFinance });
   }
 
   return {
@@ -220,10 +281,12 @@ export const getFinancingPlan = (formData: GTABFormData) => {
     termLoanBankFinancePct,
     wcBankFinancePct,
     termLoanAmount,
+    schemeTermLoanAmount,
     workingCapitalLoan,
     totalBankFinance,
     totalBankFinancePct,
     pmegpSubsidyAmount,
+    schemePMEGPSubsidyAmount,
     promoterProjectContribution,
     promoterWorkingCapitalContribution,
     promoterContribution,

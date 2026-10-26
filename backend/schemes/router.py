@@ -7,7 +7,7 @@ CA-Standard Project Finance Formula:
   Promoter Fixed Eq.  = Fixed Project Cost − Term Loan
   Promoter WC Margin  = WC_Required × (1 − wc_loan_pct)
   WC Bank Loan        = WC_Required × wc_loan_pct
-  Total Project Cost  = Fixed Project Cost + Promoter WC Margin
+  Total Project Cost  = Term Loan + WC Bank Loan + Promoter Contribution
   Total Bank Exposure = Term Loan + WC Bank Loan
 
   WC Loan is a REVOLVING facility — never mixed with term loan or fixed project cost.
@@ -50,7 +50,15 @@ def route_scheme(data: CMAReportInput) -> dict:
     scheme                       = data.scheme
     engine                       = get_default_engine()
     fixed_pc, wc_margin, wc_loan = _compute_project_cost(data)
-    total_pc                     = fixed_pc + wc_margin   # Total Project Cost for PDF display
+    promoter_total               = round(float(data.promoter_contribution or 0)) if hasattr(data, "promoter_contribution") else 0
+
+    def total_project_cost(finance: dict) -> int:
+        return round(
+            float(finance.get("term_loan", 0) or 0)
+            + float(finance.get("promoter_amount", 0) or 0)
+            + wc_margin
+            + wc_loan
+        )
 
     if scheme == SchemeType.PMEGP:
         validate_pmegp(fixed_pc, data.business.industry_type, data.business.business_status)
@@ -58,11 +66,11 @@ def route_scheme(data: CMAReportInput) -> dict:
         finance = calculate_pmegp_finance(fixed_pc, cat, data.applicant.area_type)
         return {
             **finance,
-            "project_cost":      round(total_pc),
+            "project_cost":      total_project_cost(finance),
             "fixed_project_cost": round(fixed_pc),
             "wc_margin":         round(wc_margin),
             "wc_loan":           round(wc_loan),
-            "wc_loan_note":      f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — not part of project cost",
+            "wc_loan_note":      f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — included in total project cost, separate from fixed project cost",
             "scheme":            "PMEGP",
             "report_type":       "FULL_CMA",
             "dscr_benchmark":    engine.get_dscr_benchmark("pmegp"),
@@ -83,11 +91,11 @@ def route_scheme(data: CMAReportInput) -> dict:
             moratorium = data.assumptions.moratorium_months
         return {
             **finance,
-            "project_cost":      round(total_pc),
+            "project_cost":      total_project_cost(finance),
             "fixed_project_cost": round(fixed_pc),
             "wc_margin":         round(wc_margin),
             "wc_loan":           round(wc_loan),
-            "wc_loan_note":      f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — not part of project cost",
+            "wc_loan_note":      f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — included in total project cost, separate from fixed project cost",
             "scheme":            scheme.value,
             "report_type":       report_type,
             "dscr_benchmark":    dscr_bench,
@@ -114,11 +122,11 @@ def route_scheme(data: CMAReportInput) -> dict:
             "cgtmse_agf_pct":      cgtmse["agf_rate_pct"],
             "cgtmse_coverage_pct": cgtmse["coverage_pct"],
             "cgtmse_note":         cgtmse["note"],
-            "project_cost":        round(total_pc),
+            "project_cost":        total_project_cost({"term_loan": loan, "promoter_amount": promoter}),
             "fixed_project_cost":  round(fixed_pc),
             "wc_margin":           round(wc_margin),
             "wc_loan":             round(wc_loan),
-            "wc_loan_note":        f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — not part of project cost",
+            "wc_loan_note":        f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — included in total project cost, separate from fixed project cost",
             "scheme":              "CGTMSE",
             "report_type":         "FULL_CMA",
             "dscr_benchmark":      engine.get_dscr_benchmark("cgtmse"),
@@ -129,11 +137,11 @@ def route_scheme(data: CMAReportInput) -> dict:
         finance = calculate_msme_finance(fixed_pc, data)
         return {
             **finance,
-            "project_cost":      round(total_pc),
+            "project_cost":      total_project_cost(finance),
             "fixed_project_cost": round(fixed_pc),
             "wc_margin":         round(wc_margin),
             "wc_loan":           round(wc_loan),
-            "wc_loan_note":      f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — not part of project cost",
+            "wc_loan_note":      f"Working Capital Facility (Revolving): ₹{round(wc_loan):,} — included in total project cost, separate from fixed project cost",
             "scheme":            "MSME",
             "report_type":       "FULL_CMA",
             "dscr_benchmark":    engine.get_dscr_benchmark("msme_psu"),
@@ -191,10 +199,10 @@ def _compute_project_cost(data: CMAReportInput) -> tuple:
 
 
 def _estimate_initial_wc(data: CMAReportInput) -> float:
-    """Estimate Year-1 WC requirement using 1.5 months of 50%-capacity revenue."""
-    from core.engine import annual_revenue_from_prod
+    """Estimate Year-1 WC requirement using 1.5 months of Year-1 capacity revenue."""
+    from core.engine import DEFAULT_CAPACITY_SCHEDULE, annual_revenue_from_prod
     annual_rev = annual_revenue_from_prod(data.production)
     if annual_rev <= 0:
         return 0.0
-    cap_y1 = float(getattr(data.assumptions, "capacity_y1_pct", 50) or 50) / 100
+    cap_y1 = float(getattr(data.assumptions, "capacity_y1_pct", DEFAULT_CAPACITY_SCHEDULE[0] * 100) or DEFAULT_CAPACITY_SCHEDULE[0] * 100) / 100
     return annual_rev * cap_y1 / 12 * 1.5

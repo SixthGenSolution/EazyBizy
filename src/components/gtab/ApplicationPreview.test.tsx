@@ -8,15 +8,25 @@ const reportMocks = vi.hoisted(() => ({
   downloadPDF: vi.fn(),
 }));
 
-vi.mock("@/hooks/useReportGenerator", () => ({
-  useReportGenerator: () => ({
-    isLoading: false,
-    error: null,
-    reportResult: null,
-    generateReport: reportMocks.generateReport,
-    downloadPDF: reportMocks.downloadPDF,
-  }),
-}));
+vi.mock("@/hooks/useReportGenerator", async () => {
+  const { useState } = await vi.importActual<typeof import("react")>("react");
+  return {
+    useReportGenerator: () => {
+      const [reportResult, setReportResult] = useState(null);
+      return {
+        isLoading: false,
+        error: null,
+        reportResult,
+        generateReport: async (...args: unknown[]) => {
+          const result = await reportMocks.generateReport(...args);
+          setReportResult(result);
+          return result;
+        },
+        downloadPDF: reportMocks.downloadPDF,
+      };
+    },
+  };
+});
 
 vi.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -33,6 +43,21 @@ const generatedReport = {
     scheme: "PMEGP",
     report_type: "CMA",
   },
+  break_even: Array.from({ length: 5 }, (_, index) => ({
+    year: index + 1,
+    variable_expenses: 36000 + index * 1000,
+    contribution: 64000 - index * 1000,
+    contribution_pct: 0.64 - index * 0.01,
+    operating_fixed_expenses: 12000 - index * 1000,
+    net_profit: 52000 - index * 1000,
+    operating_bep_sales: 18750 - index * 1000,
+    operating_bep_pct: 0.1875 - index * 0.01,
+    operating_bep_not_achievable: false,
+    fixed_expenses: 15000 - index * 1000,
+    bep_sales: 23437.5 - index * 1000,
+    bep_pct: 0.2344 - index * 0.01,
+    bep_not_achievable: false,
+  })),
 };
 
 describe("ApplicationPreview CMA report customization", () => {
@@ -94,6 +119,10 @@ describe("ApplicationPreview CMA report customization", () => {
     expect(payload.business).toEqual(expect.objectContaining({ bank_name: "" }));
     expect(onEnsureSaved).toHaveBeenCalledTimes(1);
     expect(reportMocks.downloadPDF).toHaveBeenCalledWith(generatedReport.pdf_url, generatedReport.report_id);
+    expect(screen.getByText("Section M — Break-Even Preview")).toBeInTheDocument();
+    expect(screen.getByText("Operating Fixed Expenses (Dep + WC & Term Loan Interest)")).toBeInTheDocument();
+    expect(screen.getByText("Net Profit")).toBeInTheDocument();
+    expect(screen.getByText("Year 5")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Customize Report" })).not.toBeInTheDocument();
   });
 });

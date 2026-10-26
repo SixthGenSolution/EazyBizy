@@ -20,6 +20,7 @@ that same input — never a hand-rolled approximation.
 """
 import copy
 from core.engine import R, dscr_label
+from core.financial_defaults import DEFAULT_WC_INTEREST_RATE_PCT, resolve_wc_interest_rate_pct
 from calculations.dscr import term_loan_dscr
 from calculations.loan_schedule import calculate_loan_schedule
 from calculations.working_capital import calculate_wc_by_year
@@ -77,7 +78,10 @@ def _bump_interest_rate(d, extra_pp: float) -> None:
     assum = getattr(d, "assumptions", None)
     if assum is None:
         return
-    assum.interest_rate_pct = float(getattr(assum, "interest_rate_pct", 10.5) or 10.5) + extra_pp
+    assum.interest_rate_pct = float(getattr(assum, "interest_rate_pct", 9.5) or 9.5) + extra_pp
+    assum.wc_interest_rate_pct = resolve_wc_interest_rate_pct(
+        getattr(assum, "wc_interest_rate_pct", DEFAULT_WC_INTEREST_RATE_PCT)
+    ) + extra_pp
 
 
 def _run_structural_scenario(data, scheme_data, dep, mutate_fns, revenue_chg_pct: float = 0.0):

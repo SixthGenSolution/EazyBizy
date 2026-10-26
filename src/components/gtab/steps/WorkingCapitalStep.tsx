@@ -320,7 +320,7 @@ const WorkingCapitalStep = ({ formData, updateFormData }: WorkingCapitalStepProp
 
             <div className="pt-4 border-t border-indigo-100 space-y-3">
               {[
-                { label: "Initial Project Investment (Fixed Capital + WC Margin)", value: plan.totalProjectCost, color: "text-indigo-700" },
+                { label: "Initial Project Investment (Term Loan + WC Facility + Promoter Contribution)", value: plan.totalProjectCost, color: "text-indigo-700" },
                 { label: "Total Bank Finance (Term Loan + WC Loan)", value: plan.totalBankFinance, color: "text-emerald-600" },
                 { label: "Promoter's Own Contribution", value: plan.promoterContribution, color: "text-amber-700" },
               ].map(({ label, value, color }) => (

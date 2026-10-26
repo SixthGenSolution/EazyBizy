@@ -2,8 +2,11 @@
 calculations/break_even.py — Break-even analysis (CA standard, Section M)
 
 CA Rules:
-  Variable  = COGS (Raw Materials) + Marketing (both scale with revenue)
-  Fixed     = Labour/Admin + Depreciation + ALL Interest (constant regardless of output)
+  Variable  = the five expense heads shown in Section J: Raw Materials / COGS,
+              Utilities & Variable Exp, Labour & Wages, Admin & Overhead,
+              and Marketing Expenses.
+  Operating Fixed = Depreciation + Interest on WC + Interest on Term Loan.
+  Financial Fixed = remaining fixed costs + Operating Fixed.
   BEP Sales = Fixed Costs / Contribution Margin Ratio
   BEP %     = BEP Sales / Annual Revenue at 100% capacity
 
@@ -96,30 +99,30 @@ def calculate_break_even(income: list, data, scheme_data: dict = None) -> list:
 
     for i, yr in enumerate(income):
         rev       = float(yr.get("revenue",        0) or 0)
-        cogs      = float(yr.get("cogs",           0) or 0)
-        marketing = float(yr.get("marketing",      0) or 0)
-        other_var = float(yr.get("other_variable", 0) or 0)   # electricity/transport/etc.
+        cogs = float(yr.get("raw_materials", yr.get("cogs", 0)) or 0)
+        utilities = float(yr.get("power", yr.get("other_variable", 0)) or 0)
+        labour = float(yr.get("labour", 0) or 0)
+        admin = float(yr.get("admin_expenses", 0) or 0)
+        marketing = float(yr.get("marketing_expenses", yr.get("marketing", 0)) or 0)
 
-        # CA: Variable = COGS + Marketing + Other variable expenses (all scale with revenue)
-        var_costs = R(cogs + marketing + other_var)
+        # Use the same five line items as Section J, once each, as the
+        # variable-expense base for Section M.
+        var_costs = R(cogs + utilities + labour + admin + marketing)
 
-        # CA: Fixed = Labour/Admin + Depreciation + Interest (all constant)
+        # Labour and admin are included in variable expenses, so remove them
+        # from the P&L fixed-cost aggregate before calculating any remaining
+        # financial fixed charges (such as a guarantee fee).
         fixed_exp = float(yr.get("fixed_expenses", 0) or 0)
+        remaining_fixed = R(fixed_exp - labour - admin)
         dep       = float(yr.get("depreciation",   0) or 0)
-        interest  = float(yr.get("interest",        0) or 0)   # tl + wc combined
-        fix_costs = R(fixed_exp + dep + interest)
-        # CA AUDIT: this is a FINANCIAL break-even (fixed costs include
-        # Depreciation AND Term Loan + WC Interest) — presenting it as a
-        # bare "BEP" without saying so reads as a pure operating break-even
-        # to a CA/banker. Also compute the OPERATING break-even — fixed
-        # costs excluding FINANCING costs only (Interest); Depreciation
-        # stays in, since it's a non-cash operating charge, not a
-        # financing cost — so both figures are available and correctly
-        # labelled.
-        op_fix_costs = R(fixed_exp + dep)
+        wc_interest = float(yr.get("wc_interest", 0) or 0)
+        tl_interest = float(yr.get("tl_interest", 0) or 0)
+        op_fix_costs = R(dep + wc_interest + tl_interest)
+        fix_costs = R(remaining_fixed + op_fix_costs)
 
         contrib   = R(rev - var_costs)
         cm_ratio  = R(contrib / rev, 4) if rev else 0
+        net_profit = R(contrib - op_fix_costs)
 
         # BUG FIX: annual_rev_100 used to come only from annual_revenue_from_prod(),
         # which derives 100%-capacity revenue from production.input_qty_per_day /
@@ -141,7 +144,8 @@ def calculate_break_even(income: list, data, scheme_data: dict = None) -> list:
         # Mark N/A when BEP > 100% capacity — technically math works but operationally impossible
         bep_not_achievable = (cm_ratio <= 0) or (bep_pct is not None and bep_pct > 1.0)
 
-        # Operating BEP — same mechanics, financing costs (interest) excluded.
+        # Both break-even sales values use the same contribution ratio and
+        # their respective fixed-cost bases.
         op_bep_sales = R(op_fix_costs / cm_ratio) if cm_ratio > 0 else None
         op_bep_pct   = R(op_bep_sales / annual_rev_100, 4) if (op_bep_sales and annual_rev_100) else None
         op_bep_not_achievable = (cm_ratio <= 0) or (op_bep_pct is not None and op_bep_pct > 1.0)
@@ -157,6 +161,7 @@ def calculate_break_even(income: list, data, scheme_data: dict = None) -> list:
             "fixed_expenses":     fix_costs,
             "contribution":       contrib,
             "contribution_pct":   cm_ratio,
+            "net_profit":         net_profit,
             "bep_sales":          bep_sales if bep_sales is not None else 0.0,
             "bep_pct":            bep_pct   if bep_pct   is not None else 0.0,
             "bep_not_achievable": bep_not_achievable,

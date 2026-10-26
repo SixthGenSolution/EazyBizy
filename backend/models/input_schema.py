@@ -9,8 +9,10 @@ They sit alongside the flat MasterInput in main_master.py without replacing it.
 
 from __future__ import annotations
 from enum import Enum
+from math import isfinite
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
+from core.financial_defaults import DEFAULT_WC_INTEREST_RATE_PCT
 
 
 # ── Enumerations ──────────────────────────────────────────────────────────────
@@ -55,6 +57,12 @@ class ProductItem(BaseModel):
     purchase_price:  float = Field(default=0,  description="Purchase cost per unit (trading only)")
     monthly_revenue: float = Field(default=0)
     mix_pct:         float = Field(default=0,  description="Revenue mix % for this line")
+
+    @model_validator(mode="after")
+    def derive_monthly_revenue(self):
+        if self.units_per_month > 0 and self.avg_price > 0:
+            self.monthly_revenue = self.units_per_month * self.avg_price
+        return self
 
 
 class ApplicantInfo(BaseModel):
@@ -174,7 +182,8 @@ class AssumptionsInfo(BaseModel):
                                 description="Subsidy scheme name / sanction order no. / sanction date / eligible "
                                             "amount / conditions attached — free text, for bank submission "
                                             "supporting documentation. Optional; shown in the report only when provided.")
-    interest_rate_pct:     float = Field(default=10.5)
+    interest_rate_pct:     float = Field(default=9.5)
+    wc_interest_rate_pct:  Optional[float] = Field(default=DEFAULT_WC_INTEREST_RATE_PCT)
     tenure_months:         int   = Field(default=60)
     moratorium_months:     int   = Field(default=0)
     revenue_growth_pct:    float = Field(default=7.0)
@@ -190,11 +199,12 @@ class AssumptionsInfo(BaseModel):
     salary_increase_pct:   float = Field(default=10.0, description="Annual salary hike %")
     contingency_pct:       float = Field(default=0.0,  description="Contingency on P&M as %")
     # Capacity utilisation schedule — 0 = use industry default
-    capacity_y1_pct:       float = Field(default=0.0,  description="Year 1 capacity % (0 = industry default: Mfg 50%, Svc 60%)")
+    capacity_y1_pct:       float = Field(default=0.0,  description="Year 1 capacity % (0 = shared five-year default schedule)")
     capacity_y2_pct:       float = Field(default=0.0)
     capacity_y3_pct:       float = Field(default=0.0)
     capacity_y4_pct:       float = Field(default=0.0)
     capacity_y5_pct:       float = Field(default=0.0)
+    capacity_schedule_pct: Optional[List[float]] = Field(default=None, max_length=20)
     # COGS override — 0 = use industry default (Mfg 55%, Trading 70%, Service 10%)
     cogs_pct_override:     float = Field(default=0.0,  description="Actual COGS % of revenue (0 = use industry default)")
     # Promoter drawings — CA standard: Closing Reserves = Opening + PAT − Drawings.
@@ -205,6 +215,16 @@ class AssumptionsInfo(BaseModel):
     wc_finance_method:      str   = Field(default="simple_margin",
                                 description="'simple_margin' (Bank Finance = WC Requirement x wc_loan_pct) or "
                                             "'drawing_power' (DP = paid-for stock/debtors after margin, less creditors).")
+
+    @field_validator("capacity_schedule_pct")
+    @classmethod
+    def validate_capacity_schedule(cls, schedule):
+        if schedule is not None and (
+            not schedule
+            or any(not isfinite(capacity) or not 0 <= capacity <= 100 for capacity in schedule)
+        ):
+            raise ValueError("Capacity schedule values must be between 0 and 100.")
+        return schedule
     wc_margin_pct:          float = Field(default=25.0,
                                 description="Margin % banks apply to stock/debtors when computing Drawing Power (Tandon-committee-era convention: commonly 25%). Only used when wc_finance_method='drawing_power'.")
 
