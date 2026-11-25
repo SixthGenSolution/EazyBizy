@@ -319,6 +319,7 @@ const normalizeTask = (value: unknown): LearningCalendarTask | null => {
     reminderMinutes: typeof item.reminderMinutes === "number" ? item.reminderMinutes : 15,
     startTime: typeof item.startTime === "string" ? item.startTime : "19:00",
     status: normalizeStatus(item.status),
+    title: item.title,
     timezone: typeof item.timezone === "string" ? item.timezone : getLocalTimezone(),
     updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : new Date().toISOString(),
   };
@@ -654,19 +655,23 @@ const SmartLearningCalendar = ({
     if (typeof window === "undefined") return;
 
     const mediaQuery = window.matchMedia("(max-width: 639px)");
-    const updateViewport = (event?: MediaQueryListEvent) => {
-      setIsCompactViewport(event ? event.matches : mediaQuery.matches);
-    };
+    const updateViewport = () => setIsCompactViewport(mediaQuery.matches);
 
     updateViewport();
 
-    if ("addEventListener" in mediaQuery) {
-      mediaQuery.addEventListener("change", updateViewport);
-      return () => mediaQuery.removeEventListener("change", updateViewport);
+    const listeners: Partial<MediaQueryList> = mediaQuery;
+    if (listeners.addEventListener && listeners.removeEventListener) {
+      listeners.addEventListener("change", updateViewport);
+      return () => listeners.removeEventListener?.("change", updateViewport);
     }
 
-    mediaQuery.addListener(updateViewport);
-    return () => mediaQuery.removeListener(updateViewport);
+    if (listeners.addListener && listeners.removeListener) {
+      listeners.addListener(updateViewport);
+      return () => listeners.removeListener?.(updateViewport);
+    }
+
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
   useEffect(() => {

@@ -22,7 +22,7 @@ class CMAAssumptions(BaseModel):
     sales_growth: float = 10.0
     expense_growth: float = 5.0
     tax_rate: float = 25.0
-    interest_rate: float = 10.5
+    interest_rate: float = 9.5
     depreciation_rates: CMADepreciationRates
 
 class CMAWorkingCapitalNorms(BaseModel):

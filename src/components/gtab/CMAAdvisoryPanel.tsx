@@ -99,7 +99,7 @@ function diagnose(warnings: string[], fd: GTABFormData): Advisory[] {
   const subsidy    = projectCost * schemeCfg.subsidyPct;
   const promoterCash = projectCost - termLoan - subsidy;
   const tenureYrs  = Number(fd.project_report_inputs?.loan?.tenure_months || 60) / 12 || 5;
-  const intRate    = Number(fd.project_report_inputs?.loan?.interest_rate_pct || 10.5) / 100;
+  const intRate    = Number(fd.project_report_inputs?.loan?.interest_rate_pct || 9.5) / 100;
   const annualTLRepay = termLoan / tenureYrs;
   // Half-yearly reducing balance interest estimate Year 1
   const annualTLInterest = termLoan * intRate * 0.9; // approximate

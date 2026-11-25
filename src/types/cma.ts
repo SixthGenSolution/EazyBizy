@@ -207,7 +207,7 @@ export const INITIAL_CMA_DATA: CMAFormData = {
   },
   loan: {
     purpose: '', loan_type: '', scheme: '', amount: 0, preferred_bank: '',
-    tenure_months: 60, moratorium_months: 6, interest_rate: 10.5
+    tenure_months: 60, moratorium_months: 6, interest_rate: 9.5
   },
   project_cost: {
     land: 0, building: 0, plant_machinery: 0, electrical: 0, furniture: 0,

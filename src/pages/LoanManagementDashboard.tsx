@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import {
@@ -38,6 +38,11 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database, Json } from "@/integrations/supabase/types";
 import GTABFormWizard from "@/components/gtab/GTABFormWizard";
+import {
+  mergeSavedApplications,
+  summarizeSavedApplications,
+  type SavedApplication,
+} from "@/lib/savedApplications";
 import {
   Dialog,
   DialogContent,
@@ -431,12 +436,6 @@ const summaryItems = [
   { label: "Rejected", value: "16", trend: "-5%", trendType: "negative", sparkline: [8, 6, 7, 5, 6, 4, 5] },
 ];
 
-const approvalMilestones = [
-  { label: "Docs Verified", status: "completed" },
-  { label: "Risk Assessment", status: "active" },
-  { label: "Final Review", status: "upcoming" },
-];
-
 const loanTypes = [
   { label: "MSME", value: 45, dot: "bg-[#00C2D1]" },
   { label: "Mudra", value: 30, dot: "bg-[#D4AF37]" },
@@ -473,23 +472,12 @@ const getProgressLabel = (progress: number) => {
   return "At Risk";
 };
 
-const circularProgress = 85; // Change this value to see different colors (try 45 for red, 65 for blue)
 const initialTrendData = [108, 132, 123, 159, 147, 190, 212, 235];
 
 const panelClass = "rounded-[2rem] border border-white/10 bg-white/5 p-6 ring-1 ring-white/5 backdrop-blur-xl shadow-[0_20px_80px_rgba(0,194,209,0.16)]";
 const innerClass = "rounded-[1.5rem] border border-white/10 bg-[#061b34]/85 p-4 ring-1 ring-white/10";
 
-interface SavedApplicationRow {
-  id: string;
-  business_entity_name: string | null;
-  loan_scheme: string | null;
-  total_project_cost: number | null;
-  eligible_loan_amount: number | null;
-  amount: number;
-  status: string;
-  created_at: string;
-  current_step: number | null;
-}
+type SavedApplicationRow = SavedApplication;
 
 const formatCurrency = (amount: number | null | undefined) =>
   new Intl.NumberFormat("en-IN", {
@@ -585,8 +573,11 @@ const LoanManagementDashboard = () => {
   const { toast } = useToast();
   const [applications, setApplications] = useState<SavedApplicationRow[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(true);
+  const [applicationsError, setApplicationsError] = useState<string | null>(null);
+  const applicationsRequestId = useRef(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAppId, setEditingAppId] = useState<string | undefined>();
+  const [editingAppSource, setEditingAppSource] = useState<SavedApplicationRow["source"]>("loan_applications");
   const [applicationFlow, setApplicationFlow] = useState<"fresh" | "resume">("fresh");
   const [searchQuery, setSearchQuery] = useState("");
   const [applicationStatusFilter, setApplicationStatusFilter] = useState("all");
@@ -633,8 +624,6 @@ const LoanManagementDashboard = () => {
       : "Here's your updated loan dashboard with live application status, approvals, and key performance trends.";
 
   // Dynamic color based on progress
-  const progressColor = getProgressColor(circularProgress);
-  const progressLabel = getProgressLabel(circularProgress);
 
   const loanAmountNumber = useMemo(() => {
     const numeric = Number(loanAmount.replace(/\D/g, "") || "0");
@@ -854,7 +843,10 @@ const LoanManagementDashboard = () => {
       throw error;
     }
 
-    setApplications((prev) => [data as SavedApplicationRow, ...prev]);
+    setApplications((prev) => [
+      { ...data, updated_at: data.created_at, source: "loan_applications" },
+      ...prev,
+    ]);
     return data.id;
   };
 
@@ -1357,35 +1349,70 @@ const LoanManagementDashboard = () => {
     }
   }, [loading, user, navigate]);
 
-  const fetchApplications = async (userId: string) => {
+  const fetchApplications = useCallback(async (userId: string) => {
+    const requestId = ++applicationsRequestId.current;
     setApplicationsLoading(true);
+    setApplicationsError(null);
+    setApplications([]);
 
-    const { data, error } = await supabase
-      .from("loan_applications")
-      .select("id, business_entity_name, loan_scheme, total_project_cost, eligible_loan_amount, amount, status, created_at, current_step")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false });
+    try {
+      const [loanResult, legacyResult] = await Promise.all([
+        supabase
+          .from("loan_applications")
+          .select("id, business_entity_name, loan_scheme, total_project_cost, eligible_loan_amount, amount, status, created_at, updated_at, current_step")
+          .eq("user_id", userId)
+          .order("updated_at", { ascending: false }),
+        supabase
+          .from("gtab_applications")
+          .select("id, business_entity_name, loan_scheme, total_project_cost, eligible_loan_amount, status, created_at, updated_at, current_step")
+          .eq("user_id", userId)
+          .order("updated_at", { ascending: false }),
+      ]);
 
-    if (error) {
+      if (requestId !== applicationsRequestId.current) return;
+
+      setApplications(mergeSavedApplications(
+        loanResult.data ?? [],
+        legacyResult.data ?? [],
+      ));
+
+      const errors = [loanResult.error, legacyResult.error].filter(Boolean);
+      if (errors.length > 0) {
+        errors.forEach((error) => console.error("Error fetching saved applications:", error));
+        setApplicationsError("Some saved applications could not be loaded. Retry to see the complete list.");
+        toast({
+          variant: "destructive",
+          title: "Could not load all applications",
+          description: "Some saved applications could not be loaded right now.",
+        });
+      }
+    } catch (error) {
+      if (requestId !== applicationsRequestId.current) return;
       console.error("Error fetching saved applications:", error);
       setApplications([]);
+      setApplicationsError("Saved applications could not be loaded. Retry to try again.");
       toast({
         variant: "destructive",
         title: "Could not load applications",
         description: "Your saved applications could not be loaded right now.",
       });
-    } else {
-      setApplications((data as SavedApplicationRow[]) ?? []);
+    } finally {
+      if (requestId === applicationsRequestId.current) {
+        setApplicationsLoading(false);
+      }
     }
-
-    setApplicationsLoading(false);
-  };
+  }, [toast]);
 
   useEffect(() => {
     if (user?.id) {
       void fetchApplications(user.id);
+    } else {
+      applicationsRequestId.current += 1;
+      setApplications([]);
+      setApplicationsLoading(false);
+      setApplicationsError(null);
     }
-  }, [user?.id]);
+  }, [fetchApplications, user?.id]);
 
   useEffect(() => {
     if (user?.id) {
@@ -1412,25 +1439,42 @@ const LoanManagementDashboard = () => {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  const totalApplicationsSummary = useMemo(
-    () => ({ label: "Total Applications", value: String(applications.length), trend: String(applications.length), trendType: "neutral" as const }),
+  const applicationCountLabel = useCallback(
+    (count: number) => applicationsLoading ? "…" : applicationsError ? "—" : String(count),
+    [applicationsError, applicationsLoading],
+  );
+  const applicationStatusCounts = useMemo(
+    () => summarizeSavedApplications(applications),
     [applications],
   );
 
+  const totalApplicationsSummary = useMemo(
+    () => ({
+      label: "Total Applications",
+      value: applicationCountLabel(applicationStatusCounts.total),
+      trend: applicationCountLabel(applicationStatusCounts.total),
+      trendType: "neutral" as const,
+    }),
+    [applicationCountLabel, applicationStatusCounts],
+  );
+
   const approvedSummary = useMemo(() => {
-    const n = applications.filter((a) => ["approved", "disbursed"].includes(a.status)).length;
-    return { label: "Approved", value: String(n), trend: n > 0 ? `+${n}` : "0", trendType: "positive" as const };
-  }, [applications]);
+    const n = applicationStatusCounts.approved;
+    const value = applicationsLoading || applicationsError ? applicationCountLabel(n) : String(n);
+    return { label: "Approved", value, trend: applicationsLoading || applicationsError ? value : n > 0 ? `+${n}` : "0", trendType: "positive" as const };
+  }, [applicationCountLabel, applicationStatusCounts, applicationsError, applicationsLoading]);
 
   const pendingSummary = useMemo(() => {
-    const n = applications.filter((a) => ["submitted", "under_review", "draft"].includes(a.status)).length;
-    return { label: "Active", value: String(n), trend: `${n} active`, trendType: "neutral" as const };
-  }, [applications]);
+    const n = applicationStatusCounts.active;
+    const value = applicationsLoading || applicationsError ? applicationCountLabel(n) : String(n);
+    return { label: "Active", value, trend: applicationsLoading || applicationsError ? value : `${n} active`, trendType: "neutral" as const };
+  }, [applicationCountLabel, applicationStatusCounts, applicationsError, applicationsLoading]);
 
   const rejectedSummary = useMemo(() => {
-    const n = applications.filter((a) => a.status === "rejected").length;
-    return { label: "Rejected", value: String(n), trend: n > 0 ? `-${n}` : "0", trendType: n > 0 ? "negative" as const : "neutral" as const };
-  }, [applications]);
+    const n = applicationStatusCounts.rejected;
+    const value = applicationsLoading || applicationsError ? applicationCountLabel(n) : String(n);
+    return { label: "Rejected", value, trend: applicationsLoading || applicationsError ? value : n > 0 ? `-${n}` : "0", trendType: n > 0 ? "negative" as const : "neutral" as const };
+  }, [applicationCountLabel, applicationStatusCounts, applicationsError, applicationsLoading]);
 
   const smartSummaryStats = useMemo(() => {
     const total = parseSummaryValue(totalApplicationsSummary.value);
@@ -1899,26 +1943,43 @@ const LoanManagementDashboard = () => {
   };
 
   const handleNewApplication = () => {
+    if (applicationsLoading || applicationsError) {
+      return;
+    }
+
     setEditingAppId(undefined);
+    setEditingAppSource("loan_applications");
     setApplicationFlow("fresh");
     setIsModalOpen(true);
   };
 
-  const handleOpenApplication = (applicationId: string) => {
+  const handleOpenApplication = (
+    applicationId: string,
+    source: SavedApplicationRow["source"] = "loan_applications",
+  ) => {
     setEditingAppId(applicationId);
+    setEditingAppSource(source);
     setApplicationFlow("resume");
     setIsModalOpen(true);
   };
 
   const latestSavedApplication = applications[0];
   const latestDraftApplication = applications.find((application) => application.status === "draft");
+  const handleOpenLatestApplication = (application?: SavedApplicationRow) => {
+    if (application) {
+      handleOpenApplication(application.id, application.source);
+    } else if (!applicationsLoading && !applicationsError) {
+      handleNewApplication();
+    }
+  };
   const applicationRows = applications.map((application) => ({
     id: formatApplicationId(application.id),
+    source: application.source,
     type: getLoanSchemeName(application.loan_scheme),
     amount: application.eligible_loan_amount ?? application.amount ?? application.total_project_cost ?? 0,
     status: application.status,
     statusLabel: getStatusLabel(application.status),
-    date: formatDate(application.created_at),
+    date: formatDate(application.updated_at),
     applicationId: application.id,
     businessName: application.business_entity_name || "saved application",
     progress: Math.round(Math.min(Math.max(application.current_step ?? 0, 0), 10) * (100 / 10)),
@@ -2010,20 +2071,91 @@ const LoanManagementDashboard = () => {
     };
   }, [documentRows]);
 
+  const latestApplication = applications[0];
+  const latestApplicationDecisionMade = Boolean(
+    latestApplication && ["approved", "rejected", "disbursed"].includes(latestApplication.status),
+  );
+  const latestApplicationSubmitted = Boolean(
+    latestApplication && ["submitted", "pending", "under_review", "approved", "rejected", "disbursed"].includes(latestApplication.status),
+  );
+  const approvalMilestones: Array<{
+    label: string;
+    status: "completed" | "active" | "upcoming";
+  }> = [
+    {
+      label: "Docs Verified",
+      status: documentSummary.total > 0 && documentSummary.verified === documentSummary.total
+        ? "completed"
+        : documentSummary.verified > 0
+          ? "active"
+          : "upcoming",
+    },
+    {
+      label: "Risk Assessment",
+      status: latestApplicationDecisionMade
+        ? "completed"
+        : latestApplication && ["pending", "submitted", "under_review"].includes(latestApplication.status)
+          ? "active"
+          : "upcoming",
+    },
+    {
+      label: "Final Review",
+      status: latestApplicationDecisionMade
+        ? "completed"
+        : latestApplication?.status === "under_review"
+          ? "active"
+          : "upcoming",
+    },
+  ];
+  const latestApplicationStep = latestApplication
+    ? Math.min(Math.max(latestApplication.current_step ?? 1, 1), 10)
+    : 0;
+  const circularProgress = latestApplication
+    ? latestApplicationSubmitted
+      ? 100
+      : Math.round(((latestApplicationStep - 1) / 10) * 100)
+    : 0;
+  const progressColor = latestApplication ? getProgressColor(circularProgress) : "#64748b";
+  const progressLabel = applicationsLoading
+    ? "Loading"
+    : applicationsError
+      ? "Unavailable"
+      : latestApplication
+        ? getProgressLabel(circularProgress)
+        : "No application";
+
   const applicationFlowSteps = useMemo(
     () => [
-      { step: 1, title: "Personal Information", status: "completed", timestamp: "14 May 2026, 22:38" },
-      { step: 2, title: "Business Details", status: "completed", timestamp: "15 May 2026, 01:38" },
-      { step: 3, title: "Documents Upload", status: "completed", timestamp: "15 May 2026, 04:38" },
-      { step: 4, title: "Loan Details", status: "completed", timestamp: "15 May 2026, 07:38" },
-      { step: 5, title: "Purpose of Loan", status: "completed", timestamp: "15 May 2026, 10:38" },
-      { step: 6, title: "Bank Details", status: "completed", timestamp: "15 May 2026, 13:38" },
-      { step: 7, title: "Guarantor / Co-applicant", status: "completed", timestamp: "15 May 2026, 16:38" },
-      { step: 8, title: "Declaration & Consent", status: "completed", timestamp: "15 May 2026, 19:38" },
-      { step: 9, title: "Review Application", status: "completed", timestamp: "15 May 2026, 22:38" },
-      { step: 10, title: "Submit Application", status: "active", timestamp: "16 May 2026, 01:38" },
-    ],
-    [],
+      "Personal Information",
+      "Business Details",
+      "Documents Upload",
+      "Loan Details",
+      "Purpose of Loan",
+      "Bank Details",
+      "Guarantor / Co-applicant",
+      "Declaration & Consent",
+      "Review Application",
+      "Submit Application",
+    ].map((title, index) => {
+      const step = index + 1;
+      const status = !latestApplication
+        ? "upcoming"
+        : latestApplicationSubmitted || step < latestApplicationStep
+          ? "completed"
+          : step === latestApplicationStep
+            ? "active"
+            : "upcoming";
+
+      return {
+        step,
+        title,
+        status,
+        timestamp: latestApplication
+          ? `Last saved ${formatDate(latestApplication.updated_at)}`
+          : "Not started",
+      };
+    }),
+    [latestApplication, latestApplicationStep, latestApplicationSubmitted],
   );
 
   const completedApplicationSteps = applicationFlowSteps.filter((step) => step.status === "completed").length;
@@ -2031,7 +2163,9 @@ const LoanManagementDashboard = () => {
   const applicationProgressPercent = totalApplicationSteps > 0
     ? Math.round((completedApplicationSteps / totalApplicationSteps) * 100)
     : 0;
-  const currentApplicationStep = applicationFlowSteps.find((step) => step.status === "active") ?? applicationFlowSteps[applicationFlowSteps.length - 1];
+  const currentApplicationStep =
+    applicationFlowSteps.find((step) => step.status === "active") ??
+    applicationFlowSteps[applicationFlowSteps.length - 1];
 
   if (loading) {
     return (
@@ -2269,6 +2403,7 @@ const LoanManagementDashboard = () => {
                   <button
                     type="button"
                     onClick={handleNewApplication}
+                    disabled={applicationsLoading || Boolean(applicationsError)}
                     className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[1.35rem] bg-[linear-gradient(90deg,#2ad6e8,#1ea7ff)] px-5 py-4 text-center text-sm font-semibold text-white shadow-[0_18px_50px_rgba(0,194,209,0.28)] transition hover:brightness-105"
                   >
                     <Plus className="h-4 w-4" />
@@ -2276,7 +2411,8 @@ const LoanManagementDashboard = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => latestSavedApplication ? handleOpenApplication(latestSavedApplication.id) : handleNewApplication()}
+                    onClick={() => handleOpenLatestApplication(latestSavedApplication)}
+                    disabled={!latestSavedApplication && (applicationsLoading || Boolean(applicationsError))}
                     className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[1.35rem] border border-white/12 bg-[#0d2543]/80 px-5 py-4 text-center text-sm font-medium text-slate-100 transition hover:border-[#00C2D1]/45 hover:bg-[#0f2b4f]"
                   >
                     <PencilLine className="h-4 w-4" />
@@ -2285,7 +2421,8 @@ const LoanManagementDashboard = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => latestDraftApplication ? handleOpenApplication(latestDraftApplication.id) : handleNewApplication()}
+                  onClick={() => handleOpenLatestApplication(latestDraftApplication)}
+                  disabled={!latestDraftApplication && (applicationsLoading || Boolean(applicationsError))}
                   className="inline-flex min-h-[56px] w-full items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 bg-[#0c1f3a]/90 px-5 py-4 text-center text-sm font-medium text-slate-100 transition hover:border-[#D4AF37]/35 hover:bg-[#102747]"
                 >
                   <FileText className="h-4 w-4" />
@@ -2358,6 +2495,23 @@ const LoanManagementDashboard = () => {
               </>
             ) : null}
           </header>
+          {applicationsError ? (
+            <div
+              role="alert"
+              className="flex flex-col gap-3 rounded-2xl border border-red-400/30 bg-red-950/30 px-4 py-3 text-sm text-red-100 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>{applicationsError}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (user?.id) void fetchApplications(user.id);
+                }}
+                className="rounded-xl border border-red-300/30 px-3 py-2 font-semibold transition hover:bg-red-400/10"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
           {isLoanDetailsPage ? (
             <section id="loan-detail-view" className="grid gap-6">
               <article className={`${panelClass}`}>
@@ -2459,7 +2613,7 @@ const LoanManagementDashboard = () => {
                                 <div className="flex flex-wrap items-center gap-3">
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenApplication(row.applicationId)}
+                                    onClick={() => handleOpenApplication(row.applicationId, row.source)}
                                     className="rounded-2xl bg-[#0b2141] px-4 py-2 text-xs font-semibold text-[#00C2D1] transition hover:bg-[#0d2853] hover:text-white"
                                   >
                                     View
@@ -2529,7 +2683,11 @@ const LoanManagementDashboard = () => {
                     <p className="text-sm uppercase tracking-[0.28em] text-slate-400">Applicant overview</p>
                     <h3 className="mt-2 text-2xl font-semibold text-white">{userName}</h3>
                     <p className="mt-1 text-sm text-slate-300">
-                      {applications.length > 0
+                      {applicationsLoading
+                        ? "Loading applications…"
+                        : applicationsError
+                          ? "Application data is unavailable."
+                          : applications.length > 0
                         ? `${applications.length} application${applications.length !== 1 ? "s" : ""} — ${getStatusLabel(applications[0]?.status ?? "draft")}`
                         : "No applications yet."}
                     </p>
@@ -2537,9 +2695,9 @@ const LoanManagementDashboard = () => {
                 </div>
                 <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-auto lg:grid-cols-4">
                   {[
-                    { label: "Applications", value: String(applications.length), accent: "border-[#00C2D1]/20 bg-gradient-to-br from-[#00C2D1]/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(0,194,209,0.2)] hover:border-[#00C2D1]/40" },
-                    { label: "Approved", value: String(applications.filter((a) => ["approved", "disbursed"].includes(a.status)).length), accent: "border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(34,197,94,0.2)] hover:border-emerald-500/40" },
-                    { label: "Status", value: applications[0] ? getStatusLabel(applications[0].status) : "—", accent: "border-[#D4AF37]/20 bg-gradient-to-br from-[#D4AF37]/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(212,175,55,0.2)] hover:border-[#D4AF37]/40" },
+                    { label: "Applications", value: applicationCountLabel(applicationStatusCounts.total), accent: "border-[#00C2D1]/20 bg-gradient-to-br from-[#00C2D1]/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(0,194,209,0.2)] hover:border-[#00C2D1]/40" },
+                    { label: "Approved", value: applicationCountLabel(applicationStatusCounts.approved), accent: "border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(34,197,94,0.2)] hover:border-emerald-500/40" },
+                    { label: "Status", value: applicationsLoading || applicationsError ? applicationCountLabel(0) : applications[0] ? getStatusLabel(applications[0].status) : "—", accent: "border-[#D4AF37]/20 bg-gradient-to-br from-[#D4AF37]/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(212,175,55,0.2)] hover:border-[#D4AF37]/40" },
                     { label: "Docs Done", value: `${documentRows.filter((d) => d.status === "verified").length}/${documentRows.length}`, accent: "border-violet-500/20 bg-gradient-to-br from-violet-500/10 to-[#061b34]/80", glow: "hover:shadow-[0_8px_24px_rgba(139,92,246,0.2)] hover:border-violet-500/40" },
                   ].map((item) => (
                     <div key={item.label} className={`rounded-[1.5rem] border p-4 transition-all duration-300 ${item.accent} ${item.glow} hover:-translate-y-0.5`}>
@@ -2556,7 +2714,11 @@ const LoanManagementDashboard = () => {
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Approval Progress</p>
                       <p className={`mt-2 text-3xl font-bold ${progressColor === "#ef4444" ? "text-red-400" : progressColor === "#22c55e" ? "text-emerald-400" : "text-[#00C2D1]"}`}>
-                        {circularProgress}%
+                        {applicationsLoading || applicationsError
+                          ? applicationCountLabel(circularProgress)
+                          : latestApplication
+                            ? `${circularProgress}%`
+                            : "—"}
                       </p>
                       <p className={`mt-1 text-sm font-medium ${progressColor === "#ef4444" ? "text-red-400/70" : progressColor === "#22c55e" ? "text-emerald-400/70" : "text-cyan-400/70"}`}>
                         {progressLabel}
@@ -2656,6 +2818,8 @@ const LoanManagementDashboard = () => {
                 </div>
                 {applicationsLoading ? (
                   <div className="px-5 py-6 text-center text-xs text-slate-500">Loading…</div>
+                ) : applicationsError && applications.length === 0 ? (
+                  <div className="px-5 py-6 text-center text-xs text-red-200">Applications could not be loaded.</div>
                 ) : applications.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 px-5 py-8 text-center">
                     <p className="text-sm text-slate-400">No applications yet.</p>
@@ -2683,7 +2847,7 @@ const LoanManagementDashboard = () => {
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleOpenApplication(app.id)}
+                          onClick={() => handleOpenApplication(app.id, app.source)}
                           className="shrink-0 rounded-xl bg-[#00C2D1]/10 px-3 py-1.5 text-xs font-medium text-[#00C2D1] transition hover:bg-[#00C2D1]/20 hover:shadow-[0_4px_12px_rgba(0,194,209,0.2)]"
                         >
                           Open
@@ -2706,7 +2870,7 @@ const LoanManagementDashboard = () => {
                     <div>
                       <p className="text-xs uppercase tracking-[0.32em] text-slate-400">Total Applications</p>
                       <p className="mt-2 text-4xl font-semibold leading-none text-white">
-                        {animatedSummaryValues.total}
+                        {applicationCountLabel(animatedSummaryValues.total)}
                       </p>
                     </div>
                     <span className="inline-flex shrink-0 rounded-full border border-[#00C2D1]/20 bg-[#00C2D1]/10 px-3 py-1.5 text-sm font-semibold text-[#7BE7F0]">
@@ -2715,14 +2879,20 @@ const LoanManagementDashboard = () => {
                   </div>
 
                   <div className="py-3">
-                    <div className="mx-auto max-w-[260px]">
-                      <Chart
-                        options={summaryStatusDonutOptions}
-                        series={summaryStatusSeries}
-                        type="donut"
-                        height={200}
-                        width="100%"
-                      />
+                    <div className="mx-auto flex min-h-[200px] max-w-[260px] items-center justify-center">
+                      {applicationsLoading ? (
+                        <p className="text-sm text-slate-400">Loading application statistics…</p>
+                      ) : applicationsError ? (
+                        <p className="text-sm text-red-200">Application statistics unavailable.</p>
+                      ) : (
+                        <Chart
+                          options={summaryStatusDonutOptions}
+                          series={summaryStatusSeries}
+                          type="donut"
+                          height={200}
+                          width="100%"
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -2751,12 +2921,16 @@ const LoanManagementDashboard = () => {
                               </span>
                               <div>
                                 <p className="text-sm font-semibold text-white">{item.label}</p>
-                                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{item.percentage.toFixed(0)}% of total</p>
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                                  {applicationsLoading || applicationsError ? "—" : `${item.percentage.toFixed(0)}% of total`}
+                                </p>
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="tabular-nums text-2xl font-bold text-white">{animatedValue}</p>
-                              <p className="text-[11px] text-slate-400">{item.percentage.toFixed(1)}%</p>
+                              <p className="tabular-nums text-2xl font-bold text-white">{applicationCountLabel(animatedValue)}</p>
+                              <p className="text-[11px] text-slate-400">
+                                {applicationsLoading || applicationsError ? "—" : `${item.percentage.toFixed(1)}%`}
+                              </p>
                             </div>
                           </div>
                           <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -2992,7 +3166,8 @@ const LoanManagementDashboard = () => {
                     <p className="text-sm text-cyan-800">Continue</p>
                     <button
                       type="button"
-                      onClick={() => latestSavedApplication ? handleOpenApplication(latestSavedApplication.id) : handleNewApplication()}
+                      onClick={() => handleOpenLatestApplication(latestSavedApplication)}
+                      disabled={!latestSavedApplication && (applicationsLoading || Boolean(applicationsError))}
                       className="inline-flex items-center justify-center gap-2 rounded-[1.15rem] border border-[#34d0e6]/42 bg-[#103857] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#124264]"
                     >
                       Continue Step
@@ -3047,6 +3222,10 @@ const LoanManagementDashboard = () => {
                   <div className="rounded-[1.65rem] border border-white/10 bg-[#091d37]/88 px-4 py-8 text-center text-sm text-slate-400">
                     Loading saved applications...
                   </div>
+                ) : applicationsError && applications.length === 0 ? (
+                  <div className="rounded-[1.65rem] border border-red-400/20 bg-[#091d37]/88 px-4 py-8 text-center text-sm text-red-200">
+                    Applications could not be loaded. Use Retry above to try again.
+                  </div>
                 ) : filteredApplicationRows.length === 0 ? (
                   <div className="rounded-[1.65rem] border border-white/10 bg-[#091d37]/88 px-4 py-8 text-center text-sm text-slate-400">
                     No saved applications yet. Start a new application and it will appear here.
@@ -3092,7 +3271,7 @@ const LoanManagementDashboard = () => {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleOpenApplication(row.applicationId)}
+                          onClick={() => handleOpenApplication(row.applicationId, row.source)}
                           aria-label={`Continue ${row.businessName}`}
                           className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-[1.1rem] border border-[#2ecfe6]/30 bg-[#0d2f4e] px-4 py-3 text-sm font-medium text-[#bbf6ff] transition hover:bg-[#124264]"
                         >
@@ -3122,6 +3301,12 @@ const LoanManagementDashboard = () => {
                         <tr>
                           <td colSpan={7} className="px-5 py-12 text-center text-slate-400">
                             Loading saved applications...
+                          </td>
+                        </tr>
+                      ) : applicationsError && applications.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-5 py-12 text-center text-red-200">
+                            Applications could not be loaded. Use Retry above to try again.
                           </td>
                         </tr>
                       ) : filteredApplicationRows.length === 0 ? (
@@ -3158,7 +3343,7 @@ const LoanManagementDashboard = () => {
                             <td className="px-5 py-4">
                               <button
                                 type="button"
-                                onClick={() => handleOpenApplication(row.applicationId)}
+                                onClick={() => handleOpenApplication(row.applicationId, row.source)}
                                 aria-label={`Continue ${row.businessName}`}
                                 className="inline-flex items-center gap-2 rounded-[1rem] border border-[#2ecfe6]/30 bg-[#0d2f4e] px-4 py-2.5 text-sm font-medium text-[#bbf6ff] transition hover:bg-[#124264]"
                               >
@@ -3182,9 +3367,9 @@ const LoanManagementDashboard = () => {
               <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div><p className="text-xs uppercase tracking-[0.28em] text-slate-400">Application Management</p><h3 className="mt-2 text-xl font-semibold text-white sm:text-2xl">Manage application flow</h3></div>
                 <div className="grid w-full gap-3 sm:flex sm:w-auto sm:flex-wrap">
-                  <button type="button" onClick={handleNewApplication} className="w-full rounded-2xl bg-[#00C2D1] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#00adc4] sm:w-auto">Create New Application</button>
-                  <button type="button" onClick={() => latestSavedApplication ? handleOpenApplication(latestSavedApplication.id) : handleNewApplication()} className="w-full rounded-2xl border border-white/10 bg-[#0b2141] px-4 py-3 text-sm text-slate-100 transition hover:border-[#00C2D1] sm:w-auto">Edit Application</button>
-                  <button type="button" onClick={() => latestDraftApplication ? handleOpenApplication(latestDraftApplication.id) : handleNewApplication()} className="w-full rounded-2xl border border-white/10 bg-[#0b2141] px-4 py-3 text-sm text-slate-100 transition hover:border-[#D4AF37] sm:w-auto">Save Draft</button>
+                  <button type="button" onClick={handleNewApplication} disabled={applicationsLoading || Boolean(applicationsError)} className="w-full rounded-2xl bg-[#00C2D1] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#00adc4] sm:w-auto">Create New Application</button>
+                  <button type="button" onClick={() => handleOpenLatestApplication(latestSavedApplication)} disabled={!latestSavedApplication && (applicationsLoading || Boolean(applicationsError))} className="w-full rounded-2xl border border-white/10 bg-[#0b2141] px-4 py-3 text-sm text-slate-100 transition hover:border-[#00C2D1] sm:w-auto">Edit Application</button>
+                  <button type="button" onClick={() => handleOpenLatestApplication(latestDraftApplication)} disabled={!latestDraftApplication && (applicationsLoading || Boolean(applicationsError))} className="w-full rounded-2xl border border-white/10 bg-[#0b2141] px-4 py-3 text-sm text-slate-100 transition hover:border-[#D4AF37] sm:w-auto">Save Draft</button>
                 </div>
               </div>
               <div className="mt-6 rounded-[1.75rem] border border-white/10 bg-[#061b34]/90 p-4 sm:p-5">
@@ -3222,6 +3407,12 @@ const LoanManagementDashboard = () => {
                           Loading saved applications...
                         </td>
                       </tr>
+                    ) : applicationsError && applications.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-red-200">
+                          Applications could not be loaded. Use Retry above to try again.
+                        </td>
+                      </tr>
                     ) : filteredApplicationRows.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
@@ -3239,7 +3430,7 @@ const LoanManagementDashboard = () => {
                         <td className="px-4 py-4">
                           <button 
                             type="button" 
-                            onClick={() => handleOpenApplication(row.applicationId)} 
+                            onClick={() => handleOpenApplication(row.applicationId, row.source)}
                             aria-label={`Continue ${row.businessName}`} 
                             className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-[#00C2D1]/15 text-[#00C2D1] transition hover:bg-[#00C2D1]/25 hover:scale-105 active:scale-95"
                           >
@@ -3327,9 +3518,9 @@ const LoanManagementDashboard = () => {
           {showPerformanceInsightsSection ? (
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: "Total Applications", value: String(applications.length), color: "text-[#7BE7F0]", border: "border-[#00C2D1]/20", bg: "bg-gradient-to-br from-[#00C2D1]/10 to-[#061421]/80", glow: "hover:border-[#00C2D1]/40 hover:shadow-[0_12px_32px_rgba(0,194,209,0.2)]" },
-              { label: "Active / Under Review", value: String(applications.filter((a) => ["submitted","under_review","draft"].includes(a.status)).length), color: "text-[#F5D778]", border: "border-[#D4AF37]/20", bg: "bg-gradient-to-br from-[#D4AF37]/10 to-[#061421]/80", glow: "hover:border-[#D4AF37]/40 hover:shadow-[0_12px_32px_rgba(212,175,55,0.2)]" },
-              { label: "Approved", value: String(applications.filter((a) => ["approved","disbursed"].includes(a.status)).length), color: "text-[#6ae5b0]", border: "border-emerald-500/20", bg: "bg-gradient-to-br from-emerald-500/10 to-[#061421]/80", glow: "hover:border-emerald-500/40 hover:shadow-[0_12px_32px_rgba(34,197,94,0.2)]" },
+              { label: "Total Applications", value: applicationCountLabel(applicationStatusCounts.total), color: "text-[#7BE7F0]", border: "border-[#00C2D1]/20", bg: "bg-gradient-to-br from-[#00C2D1]/10 to-[#061421]/80", glow: "hover:border-[#00C2D1]/40 hover:shadow-[0_12px_32px_rgba(0,194,209,0.2)]" },
+              { label: "Active / Under Review", value: applicationCountLabel(applicationStatusCounts.active), color: "text-[#F5D778]", border: "border-[#D4AF37]/20", bg: "bg-gradient-to-br from-[#D4AF37]/10 to-[#061421]/80", glow: "hover:border-[#D4AF37]/40 hover:shadow-[0_12px_32px_rgba(212,175,55,0.2)]" },
+              { label: "Approved", value: applicationCountLabel(applicationStatusCounts.approved), color: "text-[#6ae5b0]", border: "border-emerald-500/20", bg: "bg-gradient-to-br from-emerald-500/10 to-[#061421]/80", glow: "hover:border-emerald-500/40 hover:shadow-[0_12px_32px_rgba(34,197,94,0.2)]" },
               { label: "Docs Verified", value: `${documentRows.filter((d) => d.status === "verified").length} / ${documentRows.length}`, color: "text-slate-200", border: "border-violet-500/20", bg: "bg-gradient-to-br from-violet-500/10 to-[#061421]/80", glow: "hover:border-violet-500/40 hover:shadow-[0_12px_32px_rgba(139,92,246,0.2)]" },
             ].map((item) => (
               <div key={item.label} className={`relative overflow-hidden rounded-[1.5rem] border ${item.border} ${item.bg} p-4 transition-all duration-300 hover:-translate-y-0.5 ${item.glow}`}>
@@ -3548,6 +3739,7 @@ const LoanManagementDashboard = () => {
           setIsModalOpen(open);
           if (!open) {
             setEditingAppId(undefined);
+            setEditingAppSource("loan_applications");
             setApplicationFlow("fresh");
           }
           if (!open && user?.id) {
@@ -3561,10 +3753,12 @@ const LoanManagementDashboard = () => {
           </DialogHeader>
           <GTABFormWizard
             applicationId={editingAppId}
+            applicationSource={editingAppSource}
             draftMode={applicationFlow}
             onComplete={() => {
               setIsModalOpen(false);
               setEditingAppId(undefined);
+              setEditingAppSource("loan_applications");
               setApplicationFlow("fresh");
               if (user?.id) {
                 void fetchApplications(user.id);

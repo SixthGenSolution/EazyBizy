@@ -2,10 +2,13 @@
 depreciation for CMAReportInput.
 
 WDV only — no SLM anywhere in this module. Each year:
-  depreciation = opening WDV × rate
-  closing WDV  = opening WDV − depreciation
-carried forward year over year, tracked separately for Building and for
-Plant & Machinery + Fixtures (each can have its own rate).
+  depreciation = prior year's closing WDV × rate (Year 1 uses initial WDV)
+  opening WDV  = the dynamically calculated Year-1 gross WDV, repeated
+                 unchanged for all five projection years
+  accumulated depreciation = prior accumulated depreciation + current depreciation
+  closing WDV  = prior year's closing WDV − current depreciation
+Building and Plant & Machinery + Fixtures remain separate depreciation pools,
+each with its existing rate.
 
 BUG 5 FIX (kept): Gross Block for P&M must use PM_with_contingency.
   PM_with_contingency = PM_base × (1 + contingencyPct)
@@ -55,26 +58,32 @@ def calculate_depreciation(data, scheme_data: dict) -> dict:
     building_pool_opening  = building
 
     schedule = []
-    bld_opening  = building_pool_opening
-    mach_opening = machinery_pool_opening
+    gross_block = R(building + pm_with_contingency + fixtures)
+    accumulated_depreciation = 0.0
+    building_calculation_base = building_pool_opening
+    machinery_calculation_base = machinery_pool_opening
     for year in range(1, 6):
-        bld_dep  = R(bld_opening  * bldg_rate)
-        mach_dep = R(mach_opening * mach_rate)
-        bld_closing  = R(max(bld_opening  - bld_dep,  0))
-        mach_closing = R(max(mach_opening - mach_dep, 0))
+        bld_dep  = R(building_calculation_base * bldg_rate)
+        mach_dep = R(machinery_calculation_base * mach_rate)
+        bld_closing = R(max(building_calculation_base - bld_dep, 0))
+        mach_closing = R(max(machinery_calculation_base - mach_dep, 0))
+        depreciation = R(bld_dep + mach_dep)
+        accumulated_depreciation = R(accumulated_depreciation + depreciation)
         schedule.append({
             "year":                   year,
-            "opening_wdv":            R(bld_opening + mach_opening),
-            "building_opening_wdv":   bld_opening,
+            "opening_wdv":            R(building_pool_opening + machinery_pool_opening),
+            "building_opening_wdv":   building_pool_opening,
             "building_depreciation":  bld_dep,
             "building_closing_wdv":   bld_closing,
-            "machinery_opening_wdv":  mach_opening,
+            "machinery_opening_wdv":  machinery_pool_opening,
             "machinery_depreciation": mach_dep,
             "machinery_closing_wdv":  mach_closing,
-            "depreciation":           R(bld_dep + mach_dep),
-            "closing_wdv":            R(bld_closing + mach_closing),
+            "depreciation":           depreciation,
+            "accumulated_depreciation": accumulated_depreciation,
+            "closing_wdv":            R(max(gross_block - accumulated_depreciation, 0)),
         })
-        bld_opening, mach_opening = bld_closing, mach_closing
+        building_calculation_base = bld_closing
+        machinery_calculation_base = mach_closing
 
     year1 = schedule[0]
 
@@ -83,7 +92,7 @@ def calculate_depreciation(data, scheme_data: dict) -> dict:
         "machinery_gross":      machinery_base,       # pre-contingency subtotal
         "pm_with_contingency":  pm_with_contingency,  # BUG 5 — used for gross block & V10 check
         "fixtures_gross":       fixtures,
-        "gross_block":          R(building + pm_with_contingency + fixtures),
+        "gross_block":          gross_block,
         "dep_building_wdv":     year1["building_depreciation"],
         "dep_machinery_wdv":    year1["machinery_depreciation"],
         "dep_fixtures_wdv":     year1["machinery_depreciation"],  # fixtures share the machinery pool/rate

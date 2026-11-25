@@ -28,7 +28,7 @@ const DepreciationScheduleStep = ({ formData }: DepreciationScheduleStepProps) =
           <Lightbulb className="w-3.5 h-3.5" /> CA Guidance — Written Down Value (WDV)
         </p>
         <p>• WDV (reducing balance) is used exclusively — Income Tax Act depreciation is computed this way, never Straight Line.</p>
-        <p>• Each year: Depreciation = Opening WDV × Rate; Closing WDV = Opening WDV − Depreciation, carried forward as next year's opening.</p>
+        <p>• Opening WDV displays the dynamically calculated Year 1 amount unchanged for Years 1–5. Year 1 depreciation = initial asset value × Rate; each later year's depreciation = prior year's Closing WDV × Rate.</p>
         <p>• Building depreciates at {dep.buildingRatePct}% p.a. · Plant &amp; Machinery + Fixtures at {dep.machineryRatePct}% p.a.</p>
       </div>
 
@@ -90,6 +90,12 @@ const DepreciationScheduleStep = ({ formData }: DepreciationScheduleStepProps) =
                       <td key={row.year} className="text-right py-2 px-2">{fmt(row.depreciation)}</td>
                     ))}
                   </tr>
+                  <tr className="border-b">
+                    <td className="py-2 px-2 text-muted-foreground">Accumulated Depreciation</td>
+                    {dep.schedule.map((row) => (
+                      <td key={row.year} className="text-right py-2 px-2">{fmt(row.accumulatedDepreciation)}</td>
+                    ))}
+                  </tr>
                   <tr className="border-b font-semibold">
                     <td className="py-2 px-2">Closing WDV (Net Block)</td>
                     {dep.schedule.map((row) => (
@@ -99,7 +105,7 @@ const DepreciationScheduleStep = ({ formData }: DepreciationScheduleStepProps) =
                 </tbody>
               </table>
               <p className="text-xs text-muted-foreground">
-                Depreciation declines every year on the reducing balance — this schedule matches the CMA report PDF exactly.
+                The Year 1 opening WDV is displayed unchanged for every year. Depreciation uses the initial asset value in Year 1 and the prior year's closing WDV thereafter; accumulated depreciation is cumulative.
               </p>
             </CardContent>
           </Card>

@@ -67,21 +67,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const createProfileIfNotExists = async (userId: string, email?: string, fullName?: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
+  const createProfileIfNotExists = async (
+  userId: string,
+  email?: string,
+  fullName?: string
+) => {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-    if (!data) {
-      await supabase.from("profiles").insert({
-        user_id: userId,
-        email: email,
-        full_name: fullName,
-      });
-    }
-  };
+  if (error) {
+    console.error("Profile check failed:", error);
+    return;
+  }
+
+  if (!data) {
+    console.warn(
+      "Profile not found. Database trigger may not have completed.",
+      userId
+    );
+  }
+};
 
   const signUp = async (
     email: string,

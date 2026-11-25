@@ -18,6 +18,7 @@ import { getMonthlyWorkingCapital } from "@/lib/workingCapital";
 import { CMAAdvisoryPanel } from "./CMAAdvisoryPanel";
 import { predictViability, recommendScheme } from "@/lib/aiEngine";
 import { cn } from "@/lib/utils";
+import { resolveWcInterestRatePct } from "@/lib/financialDefaults";
 
 interface ApplicationPreviewProps {
   formData: GTABFormData;
@@ -167,6 +168,65 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
                 ))}
               </div>
             )}
+            {cmaResult.break_even?.length > 0 && (
+              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                <table className="w-full min-w-[720px] text-xs">
+                  <caption className="px-3 py-2 text-left font-semibold text-slate-700">
+                    Section M — Break-Even Preview
+                  </caption>
+                  <thead className="bg-slate-100 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Particulars</th>
+                      {cmaResult.break_even.map((year) => (
+                        <th key={year.year} className="px-3 py-2 text-right font-medium">Year {year.year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Variable Expenses</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{fmt(year.variable_expenses)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Contribution</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{fmt(year.contribution)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Contribution Margin %</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{(year.contribution_pct * 100).toFixed(1)}%</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Operating Fixed Expenses (Dep + WC &amp; Term Loan Interest)</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{fmt(year.operating_fixed_expenses)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Net Profit</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right font-semibold">{fmt(year.net_profit)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Operating Break-Even Sales</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{year.operating_bep_not_achievable ? "N/A" : fmt(year.operating_bep_sales)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Operating BEP as % of Capacity</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{year.operating_bep_not_achievable ? "N/A" : `${(year.operating_bep_pct * 100).toFixed(1)}%`}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Financial Fixed Expenses (incl. Dep &amp; Interest)</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{fmt(year.fixed_expenses)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Financial Break-Even Sales</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{year.bep_not_achievable ? "N/A" : fmt(year.bep_sales)}</td>)}
+                    </tr>
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Financial BEP as % of Capacity</th>
+                      {cmaResult.break_even.map((year) => <td key={year.year} className="px-3 py-2 text-right">{year.bep_not_achievable ? "N/A" : `${(year.bep_pct * 100).toFixed(1)}%`}</td>)}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
             );
           })()}
@@ -224,7 +284,8 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
       {/* ── Loan & Financial Assumptions ──────────────────────────────────────── */}
       <SectionCard icon={Landmark} title="Loan & Financial Assumptions">
         <div className="grid md:grid-cols-3 gap-4">
-          <Row label="Interest Rate"     value={`${reportInputs.loan.interest_rate_pct || 10.5}% p.a.`} />
+          <Row label="Interest Rate"     value={`${reportInputs.loan.interest_rate_pct || 9.5}% p.a.`} />
+          <Row label="WC Interest Rate"  value={`${resolveWcInterestRatePct(reportInputs.loan.wc_interest_rate_pct)}% p.a.`} />
           <Row label="Tenure"            value={`${reportInputs.loan.tenure_months || 60} months`} />
           <Row label="Moratorium"        value={`${reportInputs.loan.moratorium_months || 0} months`} />
           <Row label="Bank Name"         value={reportInputs.loan.bank_name} />

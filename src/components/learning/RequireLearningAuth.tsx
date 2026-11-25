@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { BookOpen } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import LearningAccessGate from "./LearningAccessGate";
+import LearningAccessGate from "./LearningAccessGate (1)";
 
 type RequireLearningAuthProps = {
   children: ReactNode;

@@ -887,7 +887,7 @@ const ProjectRequirementsStep = ({ formData, updateFormData }: ProjectRequiremen
           {/* Total Project Cost */}
           <div className="rounded-xl bg-primary/20 border border-primary/40 px-4 py-3 flex justify-between items-center">
             <div>
-              <p className="text-xs text-slate-400 mb-0.5">Fixed Capital + WC Margin</p>
+              <p className="text-xs text-slate-400 mb-0.5">Term Loan + WC Facility + Promoter Contribution</p>
               <p className="text-sm font-bold text-white flex items-center gap-1">
                 <IndianRupee className="w-3.5 h-3.5" /> TOTAL PROJECT COST
               </p>

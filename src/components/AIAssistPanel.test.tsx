@@ -122,7 +122,7 @@ describe("Data & Chart modal close button", () => {
     const initialEmptyCellCount = screen.getAllByPlaceholderText("Enter value").length;
     fireEvent.click(screen.getByRole("button", { name: "Add Row" }));
     expect(screen.getAllByPlaceholderText("Enter value")).toHaveLength(initialEmptyCellCount + 4);
-    fireEvent.click(screen.getByRole("button", { name: "Delete Row", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Row" }));
     expect(screen.getAllByPlaceholderText("Enter value")).toHaveLength(initialEmptyCellCount);
 
     fireEvent.click(screen.getByRole("button", { name: "Delete row 4" }));

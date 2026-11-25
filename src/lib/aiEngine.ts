@@ -12,6 +12,7 @@ import type { GTABFormData } from '@/types/gtab';
 import { getFinancingPlan } from '@/lib/projectReport';
 import { getSchemeRules } from '@/lib/schemeRulesStore';
 import { getYear1LoanFigures, calculateDscr } from '@/lib/loanSchedule';
+import { CAPACITY_SCHEDULE } from '@/lib/capacitySchedule';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -119,7 +120,7 @@ export function recommendScheme(formData: GTABFormData): SchemeRecommendation {
 
   // ── Base financial data for DSCR estimates ─────────────────────────────────
   const ri           = formData.project_report_inputs;
-  const intRatePct   = Number(ri?.loan?.interest_rate_pct || 10.5);
+  const intRatePct   = Number(ri?.loan?.interest_rate_pct || 9.5);
   const tenureYrs    = Number(ri?.loan?.tenure_months || 60) / 12 || 5;
   const monthlyRev   = Number(formData.expected_monthly_revenue || 0);
   const monthlyExp   =
@@ -445,7 +446,7 @@ export function predictViability(formData: GTABFormData): ViabilityPrediction {
   const financing   = getFinancingPlan(formData);
   const loanAmount  = financing.totalBankFinance;
   const ri               = formData.project_report_inputs;
-  const interestRatePct  = Number(ri?.loan?.interest_rate_pct || 10.5);
+  const interestRatePct  = Number(ri?.loan?.interest_rate_pct || 9.5);
   const tenureMonths     = Number(ri?.loan?.tenure_months || 60);
   const moratoriumMonths = Number(ri?.loan?.moratorium_months || 0);
 
@@ -570,6 +571,20 @@ export function generateBusinessPlanDraft(formData: GTABFormData): string {
   const cats     = formData.project_report_inputs?.revenue?.product_categories ?? [];
   const productList = cats.map(c => c.category).filter(Boolean).join(', ');
   const loanFmt  = `Rs.${(loanAmt / 100000).toFixed(1)} Lakh`;
+  const savedCapacitySchedule = formData.project_report_inputs?.dpr;
+  const savedCapacityValues = [
+    savedCapacitySchedule?.capacity_y1_pct,
+    savedCapacitySchedule?.capacity_y2_pct,
+    savedCapacitySchedule?.capacity_y3_pct,
+    savedCapacitySchedule?.capacity_y4_pct,
+    savedCapacitySchedule?.capacity_y5_pct,
+  ];
+  const capacitySchedule = CAPACITY_SCHEDULE.map((defaultCapacity, index) =>
+    Number(savedCapacityValues[index]) || defaultCapacity,
+  );
+  const capacityScheduleText = capacitySchedule
+    .map((capacity, index) => `${capacity}% in Year ${index + 1}`)
+    .join(', ');
 
   const templates: Record<string, string> = {
     manufacturing: `
@@ -583,7 +598,7 @@ The enterprise will be engaged in the manufacture of ${productList || products |
 The ${industry} sector in ${state} is witnessing sustained growth driven by domestic consumption and government initiatives under the MSME Development Act. The enterprise is well-positioned to cater to local and regional demand with competitive pricing and quality assurance.
 
 **Financial Viability**
-The project has been appraised on a five-year horizon. Revenue projections are based on conservative capacity utilisation of 50% in Year 1, growing to 80% by Year 5. The DSCR exceeds the minimum benchmark of ${dscrNorm} applicable to the ${scheme.toUpperCase()} scheme, confirming adequate cash flow for loan servicing. The break-even point is achievable within the first operational year.
+The project has been appraised on a five-year horizon. Revenue projections use the capacity schedule: ${capacityScheduleText}. The DSCR exceeds the minimum benchmark of ${dscrNorm} applicable to the ${scheme.toUpperCase()} scheme, confirming adequate cash flow for loan servicing. The break-even point is achievable within the first operational year.
 
 **Promoter Background**
 ${name} is a qualified and experienced promoter with a sound understanding of the ${industry} sector. The enterprise will create direct employment for skilled and semi-skilled workers, contributing to local economic development.

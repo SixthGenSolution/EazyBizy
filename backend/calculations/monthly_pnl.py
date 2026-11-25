@@ -24,7 +24,7 @@ def calculate_monthly_pnl(
     industry = str(getattr(getattr(data, "business", None), "industry_type", "manufacturing") or "manufacturing").lower()
     ind      = get_industry_defaults(industry)
 
-    rate_pct  = float(getattr(assum, "interest_rate_pct", 10.5) or 10.5)
+    rate_pct  = float(getattr(assum, "interest_rate_pct", 9.5) or 9.5)
     tenure_mo = int(getattr(assum, "tenure_months",       60)   or 60)
     tax_rate  = float(getattr(assum, "tax_rate_pct", _DEFAULT_TAX * 100) or (_DEFAULT_TAX * 100)) / 100
     if tax_rate <= 0:

@@ -115,15 +115,17 @@ const SignupPage = () => {
       const clientId = generateClientId();
 
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            role: selectedRole === "analyst" ? "credit_analyst" : "user",
-          },
-        },
-      });
+  email: formData.email,
+  password: formData.password,
+  options: {
+    data: {
+      full_name: formData.fullName,
+      phone: formData.phone || null,
+      client_id: clientId,
+      role: selectedRole === "analyst" ? "credit_analyst" : "user",
+    },
+  },
+});
 
       if (authError) throw authError;
 
@@ -131,20 +133,8 @@ const SignupPage = () => {
         throw new Error("User creation failed");
       }
 
-      const { error: profileError } = await supabase.from("profiles").insert({
-        user_id: authData.user.id,
-        full_name: formData.fullName,
-        email: formData.email,
-        phone: formData.phone || null,
-        client_id: clientId,
-      });
 
-      if (profileError) throw profileError;
-
-      await supabase.from("user_roles").insert({
-        user_id: authData.user.id,
-        role: selectedRole === "analyst" ? "credit_analyst" : "user",
-      });
+     
 
       toast({
         title: "Account Created!",

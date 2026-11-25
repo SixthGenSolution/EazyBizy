@@ -15,7 +15,7 @@ from typing import Optional  # noqa: F401 — kept for type hints in other modul
 
 from models.input_schema import CMAReportInput
 from schemes.router import route_scheme
-from core.engine import get_scheme_benchmarks
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, get_scheme_benchmarks
 from rules import get_default_engine, MissingRuleError
 from calculations.depreciation    import calculate_depreciation
 from calculations.loan_schedule   import calculate_loan_schedule
@@ -38,6 +38,31 @@ _SAFE_REPORT_ID = re.compile(r'^[0-9A-Fa-f]{8}$')
 
 # Use /tmp on Linux/Mac, %TEMP% on Windows
 _TMP = os.environ.get("TEMP", "/tmp")
+
+_LEGACY_CAPACITY_SCHEDULES = {
+    "manufacturing": ((50, 60, 70, 75, 80),),
+    "service":       ((60, 70, 80, 85, 90), (70, 80, 90, 90, 90)),
+    "trading":       ((60, 70, 80, 85, 90),),
+    "agriculture":   ((80, 85, 90, 95, 100),),
+}
+
+
+def _migrate_legacy_capacity_schedule(data: CMAReportInput) -> None:
+    industry = str(getattr(data.business, "industry_type", "manufacturing") or "manufacturing").lower()
+    legacy_schedules = _LEGACY_CAPACITY_SCHEDULES.get(industry)
+    if not legacy_schedules:
+        return
+
+    fields = [f"capacity_y{year}_pct" for year in range(1, 6)]
+    current = tuple(float(getattr(data.assumptions, field, 0) or 0) for field in fields)
+    submitted = getattr(data.assumptions, "capacity_schedule_pct", None)
+    submitted_tuple = tuple(float(value) for value in submitted) if submitted else None
+    is_legacy = current in legacy_schedules or submitted_tuple in legacy_schedules
+    if is_legacy:
+        revised = [round(capacity * 100, 2) for capacity in DEFAULT_CAPACITY_SCHEDULE]
+        for field, capacity in zip(fields, revised):
+            setattr(data.assumptions, field, capacity)
+        data.assumptions.capacity_schedule_pct = revised
 
 
 def _purge_old_pdfs():
@@ -63,6 +88,7 @@ async def generate_report(data: CMAReportInput):
     Returns report_id, download URL, validation status, and key metrics.
     """
     try:
+        _migrate_legacy_capacity_schedule(data)
         # 1. Route scheme → get financing structure
         scheme_data = route_scheme(data)
 
@@ -88,7 +114,7 @@ async def generate_report(data: CMAReportInput):
 
         # CA AUDIT: route_scheme() (via _compute_project_cost) can only
         # estimate Year-1 working capital with a crude heuristic ("1.5
-        # months of 50%-capacity revenue") — the REAL, detailed Tandon-
+        # months of Year-1 capacity revenue") — the REAL, detailed Tandon-
         # style WC requirement (stock/debtors/WIP/FG minus creditors,
         # actual days) isn't available until calculate_wc_by_year() runs,
         # a step later in this same pipeline. Every downstream consumer of
@@ -107,7 +133,12 @@ async def generate_report(data: CMAReportInput):
         _real_wc_loan   = float(wc_schedule[0].get("bank_loan", 0) or 0) if wc_schedule else 0.0
         scheme_data["wc_margin"] = round(_real_wc_margin)
         scheme_data["wc_loan"]   = round(_real_wc_loan)
-        scheme_data["project_cost"] = round(float(scheme_data.get("fixed_project_cost", 0) or 0) + _real_wc_margin)
+        scheme_data["project_cost"] = round(
+            float(scheme_data.get("term_loan", 0) or 0)
+            + float(scheme_data.get("promoter_amount", 0) or 0)
+            + _real_wc_margin
+            + _real_wc_loan
+        )
 
         income         = calculate_income_statement(data, scheme_data, dep, loan_schedule, wc_schedule)
         # CA AUDIT: business.existing_monthly_emi (an existing-business loan
@@ -187,6 +218,7 @@ async def generate_report(data: CMAReportInput):
             "pdf_url":            f"/api/v1/report/{report_id}/download",
             "validation_status":  validation_status,
             "validation_warnings": validation_issues,
+            "break_even":         bep,
             "key_metrics": {
                 "dscr_average":   dscr["average"],
                 "recommendation": scorecard["recommendation"],
@@ -231,12 +263,17 @@ async def validate_only(data: CMAReportInput):
     No PDF is generated — useful for a live preview / pre-check.
     """
     try:
+        _migrate_legacy_capacity_schedule(data)
         scheme_data   = route_scheme(data)
+        _scheme_moratorium = scheme_data.get("moratorium_months")
+        if _scheme_moratorium is not None:
+            data.assumptions.moratorium_months = int(_scheme_moratorium)
         dep           = calculate_depreciation(data, scheme_data)
         loan_schedule = calculate_loan_schedule(data, scheme_data)
         wc_schedule   = calculate_wc_by_year(data, scheme_data)
         income        = calculate_income_statement(data, scheme_data, dep, loan_schedule, wc_schedule)
         dscr          = calculate_dscr(income, loan_schedule, scheme_data)
+        break_even    = calculate_break_even(income, data, scheme_data)
         report_data   = {
             "input": data.model_dump(), "scheme_data": scheme_data,
             "income_statement": income, "dscr": dscr, "balance_sheet": [],
@@ -250,6 +287,7 @@ async def validate_only(data: CMAReportInput):
                 "dscr_average":   dscr["average"],
                 "year1_revenue":  income[0]["revenue"] if income else 0,
                 "year1_pat":      income[0]["pat"]     if income else 0,
+                "break_even":     break_even,
             },
         }
     except ValueError as e:
@@ -563,17 +601,19 @@ async def get_industry_calc_defaults(industry_type: str):
 @router.get("/industries", summary="Industry list with PMEGP eligibility and capacity norms")
 async def get_industries():
     """Return industry list with default margin %, capacity norms, and PMEGP eligibility."""
+    from core.engine import DEFAULT_CAPACITY_SCHEDULE
+
     return {"industries": [
         {"id": "manufacturing",  "label": "Manufacturing",     "pmegp_eligible": True,
-         "max_project_pmegp": 5_000_000,  "default_cogs_pct": 50, "capacity_yr1": 50},
+         "max_project_pmegp": 5_000_000,  "default_cogs_pct": 50, "capacity_yr1": round(DEFAULT_CAPACITY_SCHEDULE[0] * 100)},
         {"id": "service",        "label": "Service",           "pmegp_eligible": True,
-         "max_project_pmegp": 2_000_000,  "default_cogs_pct": 20, "capacity_yr1": 60},
+         "max_project_pmegp": 2_000_000,  "default_cogs_pct": 20, "capacity_yr1": round(DEFAULT_CAPACITY_SCHEDULE[0] * 100)},
         {"id": "trading",        "label": "Trading",           "pmegp_eligible": False,
          "note": "Pure trading (no value addition) NOT eligible under PMEGP",
-         "default_cogs_pct": 70, "capacity_yr1": 70},
+         "default_cogs_pct": 70, "capacity_yr1": round(DEFAULT_CAPACITY_SCHEDULE[0] * 100)},
         {"id": "agro_processing","label": "Agro-Processing",   "pmegp_eligible": True,
-         "max_project_pmegp": 5_000_000,  "default_cogs_pct": 55, "capacity_yr1": 50},
+         "max_project_pmegp": 5_000_000, "default_cogs_pct": 55, "capacity_yr1": round(DEFAULT_CAPACITY_SCHEDULE[0] * 100)},
         {"id": "agriculture",    "label": "Agriculture",       "pmegp_eligible": True,
          "note": "Agricultural activities eligible if value-addition is involved",
-         "default_cogs_pct": 60, "capacity_yr1": 50},
+         "default_cogs_pct": 60, "capacity_yr1": round(DEFAULT_CAPACITY_SCHEDULE[0] * 100)},
     ]}

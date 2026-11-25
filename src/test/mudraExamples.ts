@@ -8,17 +8,32 @@ import {
   validateMudraEligibility,
   checkMudraSchemeEligibility,
 } from '../lib/loanRulesEngine';
+import type { ApplicantData } from '../lib/loanRulesEngine';
+import type { GTABIndustryType } from '../types/gtab';
+
+const createExampleApplicant = (
+  full_name: string,
+  date_of_birth: string,
+  repaid_previous_mudra: boolean,
+): ApplicantData => ({
+  full_name,
+  fathers_name: 'Example Parent',
+  date_of_birth,
+  gender: 'undisclosed',
+  educational_qual: 'graduate',
+  social_category: 'general',
+  pan_number: 'ABCDE1234F',
+  aadhaar_number: '000000000000',
+  mobile_number: '0000000000',
+  address: 'Example address',
+  repaid_previous_mudra,
+});
 
 // Example 1: Mudra Shishu (up to ₹50,000)
 export function exampleMudraShishu() {
   const loanAmount = 30000;
-  const applicant = {
-    full_name: 'John Doe',
-    date_of_birth: '1990-01-01',
-    social_category: 'general' as any,
-    repaid_previous_mudra: true,
-  };
-  const industryType = 'manufacturing' as any;
+  const applicant = createExampleApplicant('John Doe', '1990-01-01', true);
+  const industryType: GTABIndustryType = 'manufacturing';
 
   const scheme = getMudraSchemeByAmount(loanAmount);
   const validation = validateMudraEligibility(
@@ -38,13 +53,8 @@ export function exampleMudraShishu() {
 // Example 2: Mudra Kishor (₹50,001 to ₹5,00,000)
 export function exampleMudraKishor() {
   const loanAmount = 200000;
-  const applicant = {
-    full_name: 'Jane Smith',
-    date_of_birth: '1985-05-15',
-    social_category: 'general' as any,
-    repaid_previous_mudra: true,
-  };
-  const industryType = 'service' as any;
+  const applicant = createExampleApplicant('Jane Smith', '1985-05-15', true);
+  const industryType: GTABIndustryType = 'service';
 
   const scheme = getMudraSchemeByAmount(loanAmount);
   const validation = validateMudraEligibility(
@@ -64,13 +74,8 @@ export function exampleMudraKishor() {
 // Example 3: Mudra Tarun (₹5,00,001 to ₹10,00,000)
 export function exampleMudraTarun() {
   const loanAmount = 750000;
-  const applicant = {
-    full_name: 'Raj Kumar',
-    date_of_birth: '1980-03-20',
-    social_category: 'general' as any,
-    repaid_previous_mudra: true,
-  };
-  const industryType = 'trading' as any;
+  const applicant = createExampleApplicant('Raj Kumar', '1980-03-20', true);
+  const industryType: GTABIndustryType = 'trading';
 
   const scheme = getMudraSchemeByAmount(loanAmount);
   const validation = validateMudraEligibility(
@@ -90,13 +95,8 @@ export function exampleMudraTarun() {
 // Example 4: Mudra Tarun Plus (₹10,00,001 to ₹20,00,000)
 export function exampleMudraTarunPlus() {
   const loanAmount = 1500000;
-  const applicant = {
-    full_name: 'Priya Singh',
-    date_of_birth: '1975-08-10',
-    social_category: 'general' as any,
-    repaid_previous_mudra: true, // Must be true for Tarun Plus
-  };
-  const industryType = 'manufacturing' as any;
+  const applicant = createExampleApplicant('Priya Singh', '1975-08-10', true);
+  const industryType: GTABIndustryType = 'manufacturing';
 
   const scheme = getMudraSchemeByAmount(loanAmount);
   const validation = validateMudraEligibility(
@@ -116,13 +116,8 @@ export function exampleMudraTarunPlus() {
 // Example 5: Mudra Tarun Plus without prior repayment (should fail)
 export function exampleMudraTarunPlusNoRepayment() {
   const loanAmount = 1500000;
-  const applicant = {
-    full_name: 'Amit Patel',
-    date_of_birth: '1975-08-10',
-    social_category: 'general' as any,
-    repaid_previous_mudra: false, // This will cause failure
-  };
-  const industryType = 'service' as any;
+  const applicant = createExampleApplicant('Amit Patel', '1975-08-10', false);
+  const industryType: GTABIndustryType = 'service';
 
   const scheme = getMudraSchemeByAmount(loanAmount);
   const validation = validateMudraEligibility(
@@ -142,13 +137,8 @@ export function exampleMudraTarunPlusNoRepayment() {
 // Example 6: Comprehensive scheme eligibility check
 export function exampleComprehensiveMudraCheck() {
   const loanAmount = 800000;
-  const applicant = {
-    full_name: 'Sunita Sharma',
-    date_of_birth: '1982-11-25',
-    social_category: 'general' as any,
-    repaid_previous_mudra: true,
-  };
-  const industryType = 'manufacturing' as any;
+  const applicant = createExampleApplicant('Sunita Sharma', '1982-11-25', true);
+  const industryType: GTABIndustryType = 'manufacturing';
   const financialRatios = {
     debt_equity_ratio: 1.5,
     dscr: 1.8,
@@ -173,13 +163,8 @@ export function exampleComprehensiveMudraCheck() {
 // Example 7: Invalid loan amount (too high)
 export function exampleInvalidLoanAmount() {
   const loanAmount = 2500000; // Above ₹20 lakhs limit
-  const applicant = {
-    full_name: 'Vikram Singh',
-    date_of_birth: '1970-01-01',
-    social_category: 'general' as any,
-    repaid_previous_mudra: true,
-  };
-  const industryType = 'manufacturing' as any;
+  const applicant = createExampleApplicant('Vikram Singh', '1970-01-01', true);
+  const industryType: GTABIndustryType = 'manufacturing';
 
   const result = checkMudraSchemeEligibility(
     loanAmount,

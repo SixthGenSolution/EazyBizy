@@ -16,7 +16,8 @@ import {
   mergeProjectReportInputs,
   parsePlantMachinery,
 } from "@/types/gtab";
-import type { Json } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
+import type { SavedApplicationSource } from "@/lib/savedApplications";
 import {
   getFinancingPlan,
 } from "@/lib/projectReport";
@@ -52,6 +53,93 @@ const DEFAULT_TENURE_MONTHS = 60;
 const NARRATIVE_DRAFT_PREFIX = "gtab-report-narratives:";
 const APPLICATION_DRAFT_PREFIX = "gtab-application-draft:";
 const SAVE_TIMEOUT_MS = 12000;
+const LEGACY_APPLICATION_FIELDS = [
+  "user_id",
+  "first_name",
+  "middle_name",
+  "last_name",
+  "gender",
+  "education",
+  "social_category",
+  "address_line_1",
+  "address_line_2",
+  "city",
+  "state",
+  "pincode",
+  "registration_type",
+  "contact_mobile",
+  "contact_email",
+  "business_type",
+  "business_duration_months",
+  "business_entity_name",
+  "type_of_business",
+  "industry_type",
+  "industry_other",
+  "loan_scheme",
+  "loan_scheme_other",
+  "loan_purpose",
+  "business_description",
+  "products_services",
+  "target_market",
+  "expected_monthly_revenue",
+  "expected_employment",
+  "competitive_advantage",
+  "promoter_experience",
+  "land_cost",
+  "shed_building_cost",
+  "plant_machinery",
+  "computers_cost",
+  "furniture_cost",
+  "electrification_cost",
+  "racks_storage_cost",
+  "transportation_cost",
+  "machinery_installation_cost",
+  "other_initial_expenditure",
+  "total_project_cost",
+  "margin_money",
+  "eligible_loan_amount",
+  "monthly_rent",
+  "skilled_workers_count",
+  "skilled_workers_salary",
+  "semi_skilled_workers_count",
+  "semi_skilled_workers_salary",
+  "wages_count",
+  "wages_salary",
+  "employee_count",
+  "salary_per_employee",
+  "total_monthly_salary",
+  "raw_material_cost",
+  "stationery_cost",
+  "electricity_water_cost",
+  "repair_maintenance_cost",
+  "transport_cost",
+  "telephone_internet_cost",
+  "marketing_cost",
+  "miscellaneous_cost",
+  "total_monthly_expenses",
+  "working_capital_required",
+  "working_capital_period",
+  "project_report_inputs",
+  "current_step",
+  "status",
+  "submitted_at",
+] as const satisfies readonly (keyof Database["public"]["Tables"]["gtab_applications"]["Update"])[];
+
+type LoanApplicationRow = Database["public"]["Tables"]["loan_applications"]["Row"];
+type LegacyApplicationRow = Database["public"]["Tables"]["gtab_applications"]["Row"];
+type WizardApplicationRow = Partial<LoanApplicationRow> & {
+  business_activity_other?: string | null;
+  industry_specific_data?: Json | null;
+  negative_list_check?: boolean | null;
+};
+
+const normalizeLegacyApplication = (application: LegacyApplicationRow): WizardApplicationRow => ({
+  ...application,
+  amount: application.eligible_loan_amount ?? 0,
+  loan_type_id: "",
+  tenure_months: DEFAULT_TENURE_MONTHS,
+  status: application.status ?? "draft",
+});
 
 const INDUSTRY_CHOICES: Array<{
   value: Exclude<GTABIndustryType, "others">;
@@ -244,6 +332,7 @@ const SCHEME_CHOICES: SchemeChoice[] = [
 
 interface GTABFormWizardProps {
   applicationId?: string;
+  applicationSource?: SavedApplicationSource;
   initialStep?: number;
   draftMode?: "fresh" | "resume";
   onComplete?: () => void;
@@ -288,7 +377,13 @@ const scrollFormToTop = () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
 
-const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ applicationId, initialStep, draftMode = "resume", onComplete }, ref) => {
+const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({
+  applicationId,
+  applicationSource = "loan_applications",
+  initialStep,
+  draftMode = "resume",
+  onComplete,
+}, ref) => {
   const [currentStep, setCurrentStep] = useState(() => clampStep(initialStep));
   const [formData, setFormData] = useState<GTABFormData>(INITIAL_FORM_DATA);
   const [isIndustryConfirmed, setIsIndustryConfirmed] = useState(Boolean(applicationId));
@@ -296,7 +391,10 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [appId, setAppId] = useState<string | null>(applicationId || null);
+  const [applicationStatus, setApplicationStatus] = useState("draft");
+  const [applicationSubmittedAt, setApplicationSubmittedAt] = useState<string | null>(null);
   const [gtabLoanTypeId, setGtabLoanTypeId] = useState<string | null>(null);
+  const loadRequestId = useRef(0);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -453,11 +551,20 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
 
   // Load existing application if ID provided
   useEffect(() => {
-    if (applicationId) {
-      setIsIndustryConfirmed(true);
-      loadApplication(applicationId);
+    setAppId(applicationId ?? null);
+    if (!applicationId) {
+      loadRequestId.current += 1;
+      setIsLoading(false);
+      setApplicationStatus("draft");
+      setApplicationSubmittedAt(null);
+      return;
     }
-  }, [applicationId]);
+
+    if (user?.id) {
+      setIsIndustryConfirmed(true);
+      void loadApplication(applicationId, applicationSource, user.id);
+    }
+  }, [applicationId, applicationSource, user?.id]);
 
   // Autosave a half-filled report on every edit (debounced) so nothing is lost
   // on logout/close. saveProgress writes localStorage always + Supabase if
@@ -541,18 +648,42 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
     }
   };
 
-  const loadApplication = async (id: string) => {
+  const loadApplication = async (
+    id: string,
+    source: SavedApplicationSource,
+    userId: string,
+  ) => {
+    const requestId = ++loadRequestId.current;
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("loan_applications")
-        .select("*")
-        .eq("id", id)
-        .single();
+      let data: WizardApplicationRow | null;
+      if (source === "loan_applications") {
+        const { data: loanApplication, error } = await supabase
+          .from("loan_applications")
+          .select("*")
+          .eq("id", id)
+          .eq("user_id", userId)
+          .maybeSingle();
 
-      if (error) throw error;
+        if (error) throw error;
+        data = loanApplication;
+      } else {
+        const { data: legacyApplication, error } = await supabase
+          .from("gtab_applications")
+          .select("*")
+          .eq("id", id)
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (error) throw error;
+        data = legacyApplication ? normalizeLegacyApplication(legacyApplication) : null;
+      }
+
+      if (requestId !== loadRequestId.current) return;
 
       if (data) {
+        setApplicationStatus(data.status ?? "draft");
+        setApplicationSubmittedAt(data.submitted_at ?? null);
         const parsedMachinery = parsePlantMachinery(data.plant_machinery);
         const localApplication = loadApplicationDraft(id);
         const localNarratives = loadNarrativeDraft(id);
@@ -677,15 +808,20 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
           ...localNarratives,
         });
         setCurrentStep(initialStep ? clampStep(initialStep) : data.current_step || 1);
+      } else {
+        throw new Error("This application could not be found or is no longer available.");
       }
     } catch (error: any) {
+      if (requestId !== loadRequestId.current) return;
       toast({
         title: "Error loading application",
         description: error.message,
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      if (requestId === loadRequestId.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -742,8 +878,8 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
   // Calculate totals
   const calculateTotals = (data: GTABFormData = formData) => {
     // getFinancingPlan (→ getProjectCostBreakdown) is the single source of
-    // truth for Total Project Cost: Fixed Capital + promoter's WC margin
-    // only — never the full WC requirement. Don't duplicate that formula here.
+    // truth for Total Project Cost: term loan + working capital facility +
+    // promoter contribution. Do not duplicate that formula here.
     const financingPlan = getFinancingPlan(data);
     const normalizedProjectCost = financingPlan.totalProjectCost;
     const marginMoney = financingPlan.promoterContribution;
@@ -818,8 +954,11 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
     }, SAVE_TIMEOUT_MS + 2000);
 
     try {
-      const loanTypeId = await fetchGtabLoanTypeId();
-      if (!loanTypeId) {
+      const loanTypeId =
+        applicationSource === "gtab_applications"
+          ? null
+          : await fetchGtabLoanTypeId();
+      if (!loanTypeId && applicationSource !== "gtab_applications") {
         throw new Error(
           "Supabase is missing the EazyBizy MSME loan type. Run the loan type SQL migration, then save again.",
         );
@@ -847,9 +986,14 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
 
 
 
+      const submittedAt = submit
+        ? new Date().toISOString()
+        : applicationId
+          ? applicationSubmittedAt
+          : null;
       const applicationData = {
         user_id: user.id,
-        loan_type_id: loanTypeId,
+        loan_type_id: loanTypeId ?? "",
         amount: totals.eligible_loan_amount,
         tenure_months: DEFAULT_TENURE_MONTHS,
         first_name: dataToSave.first_name,
@@ -964,21 +1108,54 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
         } as unknown as Json,
         ...totals,
         current_step: stepToPersist,
-        status: submit ? "submitted" as const : "draft" as const,
-        submitted_at: submit ? new Date().toISOString() : null,
+        status: submit ? "submitted" as const : (applicationId ? applicationStatus : "draft"),
+        submitted_at: submittedAt,
       };
 
       const persistApplicationData = async (payload: Record<string, unknown>) => {
         if (appId) {
-          const { error } = await withTimeout(
+          if (applicationSource === "gtab_applications") {
+            const legacyPayload = Object.fromEntries(
+              LEGACY_APPLICATION_FIELDS
+                .filter((field) => field in payload)
+                .map((field) => [field, payload[field]]),
+            ) as Database["public"]["Tables"]["gtab_applications"]["Update"];
+            const { data, error } = await withTimeout(
+              supabase
+                .from("gtab_applications")
+                .update(legacyPayload)
+                .eq("id", appId)
+                .eq("user_id", user.id)
+                .select("id")
+                .maybeSingle(),
+            );
+
+            if (error) throw error;
+            if (!data) {
+              throw new Error("This application could not be saved because it is no longer available.");
+            }
+            return appId;
+          }
+
+          const { data, error } = await withTimeout(
             supabase
               .from("loan_applications")
               .update(payload as never)
               .eq("id", appId)
+              .eq("user_id", user.id)
+              .select("id")
+              .maybeSingle(),
           );
 
           if (error) throw error;
+          if (!data) {
+            throw new Error("This application could not be saved because it is no longer available.");
+          }
           return appId;
+        }
+
+        if (applicationSource !== "loan_applications") {
+          throw new Error("A legacy application must be loaded before it can be saved.");
         }
 
         const { data, error } = await withTimeout(
@@ -1009,6 +1186,10 @@ const GTABFormWizard = forwardRef<GTABFormWizardHandle, GTABFormWizardProps>(({ 
       }
       saveNarrativeDraft(savedId, dataToSave);
       saveApplicationDraft(savedId, dataToSave, stepToPersist);
+      if (submit) {
+        setApplicationStatus("submitted");
+        setApplicationSubmittedAt(submittedAt);
+      }
 
       if (!options.silent) {
         toast({

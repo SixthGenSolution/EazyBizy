@@ -29,7 +29,8 @@ def _safe_filename(name: str, max_len: int = 64) -> str:
     sanitized = _SAFE_NAME_RE.sub('', name).replace(' ', '_')
     return sanitized[:max_len] or 'unknown'
 
-from core.engine import run_dpr, run_cma, R, _tally_projected_balance_sheet
+from core.engine import DEFAULT_CAPACITY_SCHEDULE, run_dpr, run_cma, R, _tally_projected_balance_sheet
+from core.financial_defaults import DEFAULT_WC_INTEREST_RATE, resolve_wc_interest_rate
 from pdf.builder import build_pdf
 from schemes.pmegp import calculate_pmegp_finance, PMEGPValidationError
 from schemes.router import route_scheme
@@ -150,7 +151,11 @@ class MasterInput(BaseModel):
     loan_type: str = Field(default="Term Loan")
     term_loan_amount: float = Field(default=385000)
     working_capital_loan: float = Field(default=56000)
-    loan_interest_rate_pct: float = Field(default=10.5, description="CMA loan interest rate %")
+    term_loan_amount_override: Optional[float] = None
+    working_capital_loan_override: Optional[float] = None
+    margin_money_override: Optional[float] = None
+    promoter_contribution_override: Optional[float] = None
+    loan_interest_rate_pct: float = Field(default=9.5, description="CMA loan interest rate %")
     tenure_months: int = Field(default=60)
     moratorium_months: int = Field(default=0)
     processing_fee_pct: float = Field(default=1.0)
@@ -240,8 +245,8 @@ class MasterInput(BaseModel):
     contingency_rate: float = Field(default=0.10)
     term_loan_pct: float = Field(default=0.70)
     wc_loan_pct: float = Field(default=0.60)
-    term_loan_interest: float = Field(default=0.145, description="Decimal: 0.145 = 14.5%")
-    wc_interest_rate: float = Field(default=0.15)
+    term_loan_interest: float = Field(default=0.095, description="Decimal: 0.095 = 9.5%")
+    wc_interest_rate: Optional[float] = Field(default=DEFAULT_WC_INTEREST_RATE)
     salary_increase_rate: float = Field(default=0.10)
     admin_increase_rate: float = Field(default=0.05)
     marketing_expense_pct: float = Field(default=0.025, description="Fraction of revenue")
@@ -263,11 +268,11 @@ class MasterInput(BaseModel):
     wc_working_expenses_days: int = Field(default=30)
 
     # ── DPR — CAPACITY UTILISATION PER YEAR ──────────────────────────────────
-    capacity_y1: float = Field(default=0.50)
-    capacity_y2: float = Field(default=0.60)
-    capacity_y3: float = Field(default=0.70)
-    capacity_y4: float = Field(default=0.75)
-    capacity_y5: float = Field(default=0.80)
+    capacity_y1: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[0])
+    capacity_y2: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[1])
+    capacity_y3: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[2])
+    capacity_y4: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[3])
+    capacity_y5: float = Field(default=DEFAULT_CAPACITY_SCHEDULE[4])
 
     # ── DPR — LOAN TENURE ────────────────────────────────────────────────────
     loan_tenure_years: int = Field(default=5)
@@ -397,9 +402,6 @@ def normalize_industry_input(d: dict, industry: str) -> dict:
                 normalized["selling_price_per_unit"] = total_rev
                 normalized["expected_monthly_revenue"] = total_rev
 
-    for field in ("capacity_y1", "capacity_y2", "capacity_y3", "capacity_y4", "capacity_y5"):
-        normalized[field] = 1.0
-
     return normalized
 
 
@@ -451,7 +453,9 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
     base_power = R(d.get("electricity_water", 0) * 12, 2)
     sal_hike = float(d.get("salary_increase_pct", 10) or 10) / 100
     # Separate WC interest from TL interest (CMA engine provides combined in "interest")
-    base_wc_interest_annual = R(cma.get("working_capital_loan", 0) * d.get("wc_interest_rate", 0.12), 2)
+    base_wc_interest_annual = R(
+        cma.get("working_capital_loan", 0) * resolve_wc_interest_rate(d.get("wc_interest_rate")), 2
+    )
     base_tl_interest_annual = R(cma.get("yr1_interest", cma.get("annual_emi", 0)), 2)
     for row in years:
         sales = R(row.get("sales", 0), 2)
@@ -473,7 +477,7 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
         reserves = R(reserves + pat, 2)
         p_and_l.append({
             "year":              yr_num,
-            "capacity":          1.0,
+            "capacity":          row.get("capacity", d.get(f"capacity_y{yr_num}", DEFAULT_CAPACITY_SCHEDULE[yr_num - 1])),
             "revenue":           sales,
             "raw_materials":     raw_materials,
             "power":             power,
@@ -494,7 +498,7 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
 
     if not p_and_l:
         p_and_l = [{
-            "year": 1, "capacity": 1.0, "revenue": R(cma.get("annual_revenue", 0), 2),
+            "year": 1, "capacity": d.get("capacity_y1", DEFAULT_CAPACITY_SCHEDULE[0]), "revenue": R(cma.get("annual_revenue", 0), 2),
             "raw_materials": 0.0, "power": 0.0, "labour": 0.0,
             "total_variable": R(cma.get("total_monthly_exp", 0) * 12, 2),
             "depreciation": annual_dep, "admin_expenses": R(cma.get("total_monthly_exp", 0) * 12, 2),
@@ -531,7 +535,7 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
             "total": total_wc,
             "bank_loan": bank_loan,
             "margin": R(max(total_wc - bank_loan, 0), 2),
-            "wc_interest": R(bank_loan * d.get("wc_interest_rate", 0), 2),
+            "wc_interest": R(bank_loan * resolve_wc_interest_rate(d.get("wc_interest_rate")), 2),
         })
 
     opening_current_assets = wc_years[0]["total"] if wc_years else base_wc
@@ -616,6 +620,28 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
         })
 
     annual_revenue = R(cma.get("annual_revenue", 0), 2)
+    break_even_years = []
+    for row in p_and_l[:5]:
+        contribution = R(row["revenue"] - row["total_variable"], 2)
+        operating_fixed = R(
+            row.get("depreciation", 0)
+            + row.get("wc_interest", 0)
+            + row.get("tl_interest", 0),
+            2,
+        )
+        break_even_years.append({
+            "year": row["year"],
+            "revenue": row["revenue"],
+            "variable_expenses": row["total_variable"],
+            "contribution": contribution,
+            "contribution_pct": R(contribution / row["revenue"], 4) if row["revenue"] else 0,
+            "operating_fixed_expenses": operating_fixed,
+            "net_profit": R(contribution - operating_fixed, 2),
+            "fixed_expenses": R(row["depreciation"] + row["tl_interest"], 2),
+            "bep_sales": R(cma.get("breakeven_revenue", 0), 2),
+            "bep_pct": R(cma.get("breakeven_revenue", 0) / annual_revenue, 4) if annual_revenue else 0,
+        })
+
     return {
         "project_summary": {
             "entrepreneur_name": d.get("entrepreneur_name", ""),
@@ -683,19 +709,7 @@ def dpr_from_cma(d: dict, cma: dict, industry: str) -> dict:
         "profit_and_loss_years": p_and_l[:5],
         "balance_sheet_years": balance_sheet,
         "cash_flow_years": cash_flow,
-        "breakeven_years": [
-            {
-                "year": row["year"],
-                "revenue": row["revenue"],
-                "variable_expenses": row["total_variable"],
-                "contribution": R(row["revenue"] - row["total_variable"], 2),
-                "contribution_pct": R((row["revenue"] - row["total_variable"]) / row["revenue"], 4) if row["revenue"] else 0,
-                "fixed_expenses": row["depreciation"] + row["tl_interest"],
-                "bep_sales": R(cma.get("breakeven_revenue", 0), 2),
-                "bep_pct": R(cma.get("breakeven_revenue", 0) / annual_revenue, 4) if annual_revenue else 0,
-            }
-            for row in p_and_l[:5]
-        ],
+        "breakeven_years": break_even_years,
         "dscr": {"years": dscr_years, "average": R(cma.get("avg_dscr", cma.get("avg_dscr_5yr", 0)), 2)},
         "profitability": {
             "reference_year": 3,
@@ -787,32 +801,50 @@ def master_calculate_for_industry(inp: MasterInput, industry: Optional[str] = No
             float(pc.get("total_project_cost") or 0) - float(pc.get("wc_loan") or 0), 2
         )
         pmegp_finance = calculate_pmegp_finance(
-            project_cost=pmegp_project_cost,
-            social_category=d.get("social_category", "General"),
-            area_type=d.get("area_type", "Rural"),
-            industry=resolved_industry,
-            business_status=d.get("business_status", ""),
+            pmegp_project_cost,
+            d.get("social_category", "General"),
+            d.get("area_type", "Rural"),
+            resolved_industry,
+            d.get("business_status", ""),
         )
+        expected_amounts = {
+            "term_loan_amount_override": pmegp_finance["term_loan"],
+            "margin_money_override": pmegp_finance["margin_money"],
+            "promoter_contribution_override": pmegp_finance["promoter_amount"],
+        }
+        for key, expected_amount in expected_amounts.items():
+            entered_amount = d.get(key)
+            if entered_amount is not None and abs(float(entered_amount) - float(expected_amount)) > 1:
+                warnings.append(
+                    f"PMEGP {key.removesuffix('_override').replace('_', ' ')} is "
+                    f"Rs.{float(entered_amount):,.0f}; the scheme-based amount is "
+                    f"Rs.{float(expected_amount):,.0f}. Verify against the sanction."
+                )
+
+        term_loan = pmegp_finance["term_loan"] if d.get("term_loan_amount_override") is None else max(float(d["term_loan_amount_override"]), 0)
+        margin_money = pmegp_finance["margin_money"] if d.get("margin_money_override") is None else max(float(d["margin_money_override"]), 0)
+        promoter_amount = pmegp_finance["promoter_amount"] if d.get("promoter_contribution_override") is None else max(float(d["promoter_contribution_override"]), 0)
         # Override dpr project_cost with PMEGP split
-        pc["equity_capital"]   = pmegp_finance["promoter_amount"]
-        pc["margin_money"]     = pmegp_finance["margin_money"]
-        pc["margin_money_pct"] = pmegp_finance["margin_money_pct"]
-        pc["term_loan"]        = pmegp_finance["term_loan"]
+        pc["equity_capital"]   = promoter_amount
+        pc["margin_money"]     = margin_money
+        pc["margin_money_pct"] = R((margin_money / pmegp_project_cost) * 100, 2) if pmegp_project_cost else 0
+        pc["term_loan"]        = term_loan
+        pc["total_project_cost"] = R(term_loan + float(pc.get("wc_loan", 0) or 0) + promoter_amount, 2)
         pc["total_finance"]    = R(
-            pmegp_finance["promoter_amount"]
-            + pmegp_finance["margin_money"]
-            + pmegp_finance["term_loan"]
+            promoter_amount
+            + margin_money
+            + term_loan
             + pc.get("wc_loan", 0),
             2,
         )
         pc["debt_equity_ratio"] = (
-            round(pmegp_finance["term_loan"] / pmegp_finance["promoter_amount"], 2)
-            if pmegp_finance["promoter_amount"] else 0
+            round(term_loan / promoter_amount, 2)
+            if promoter_amount else 0
         )
         # Propagate into CMA summary
-        cma_result["margin_money"]     = pmegp_finance["margin_money"]
-        cma_result["margin_money_pct"] = pmegp_finance["margin_money_pct"]
-        cma_result["promoter_contribution"] = pmegp_finance["promoter_amount"]
+        cma_result["margin_money"]     = margin_money
+        cma_result["margin_money_pct"] = pc["margin_money_pct"]
+        cma_result["promoter_contribution"] = promoter_amount
         cma_result["promoter_pct"]     = pmegp_finance["promoter_pct"]
         cma_result["tdr_note"]         = pmegp_finance["tdr_note"]
 

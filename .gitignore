@@ -6,6 +6,7 @@ build
 # ── Dependencies ─────────────────────────────────────────────────────────────
 node_modules
 .venv
+.venv*/
 __pycache__
 *.pyc
 *.pyo
@@ -15,9 +16,15 @@ __pycache__
 
 # ── Environment / Secrets — NEVER commit these ───────────────────────────────
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 
 # ── Generated reports (large binary/json files) ──────────────────────────────
 backend/generated_reports/
@@ -49,3 +56,15 @@ Thumbs.db
 
 memory/
 samples/
+
+# Temporary files
+.vite/
+supabase/.temp/
+
+# Local settings and one-off audit helpers
+.claude/settings.local.json
+build_output.txt
+apply_engine_patch.py
+apply_patch.py
+update_readme.py
+verify_wc_report.py

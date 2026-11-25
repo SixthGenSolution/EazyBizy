@@ -60,7 +60,7 @@ def calculate_balance_sheet(
             "margin_money":       margin_money,   # PMEGP: TDR released after 3 years
             "term_loan":          R(float(loan_schedule[i]["closing_balance"])),
             "reserves":           R(float(yr.get("reserves_surplus", 0) or 0)),
-            "wc_bank":            R(float(wc_schedule[i]["bank_loan"])) if i < len(wc_schedule) else wc_y1_bank,
+            "wc_bank":            R(wc_y1_bank),
             "promoter_wc_margin": R(float(wc_schedule[i].get("margin", 0))) if i < len(wc_schedule) else wc_y1_margin,
             "land":               land,
             "gross_block":        gross_block,
