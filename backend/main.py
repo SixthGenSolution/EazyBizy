@@ -43,11 +43,15 @@ import time
 app = FastAPI(title="GTAB Master CMA+DPR API", version="4.0.0")
 
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
-_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+_allowed_origins = [o.strip().rstrip("/") for o in _raw_origins.split(",") if o.strip()]
+# Optional regex for origins that can't be listed up front, e.g. Vercel preview
+# deployments: ALLOWED_ORIGIN_REGEX=https://eazybizy(-[a-z0-9-]+)?\.vercel\.app
+_allowed_origin_regex = os.environ.get("ALLOWED_ORIGIN_REGEX", "").strip() or None
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_allowed_origins if _allowed_origins else ["*"],
+    allow_origins=_allowed_origins if (_allowed_origins or _allowed_origin_regex) else ["*"],
+    allow_origin_regex=_allowed_origin_regex,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

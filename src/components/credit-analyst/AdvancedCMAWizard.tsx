@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { validateReport, type ValidationResult } from "@/lib/cmaValidator";
+import { API_BASE_URL, API_NOT_CONFIGURED_MESSAGE } from "@/lib/apiBase";
 
 // Indian-format currency helper, shared across all wizard steps.
 const fmt = (n: number) => n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -955,7 +956,8 @@ export const AdvancedCMAWizard = ({ isOpen, onClose, applicationId, initialData,
 
     setIsSubmitting(true);
     try {
-      const apiUrl = import.meta.env.VITE_CMA_API_URL || 'http://localhost:8000';
+      const apiUrl = API_BASE_URL;
+      if (!apiUrl) throw new Error(API_NOT_CONFIGURED_MESSAGE);
       const { data: { session } } = await supabase.auth.getSession();
       // In demo mode the PDF is watermarked (demo=true). Admin Excel/CSV go via
       // the normal path (no demo flag) so they receive clean files.

@@ -12,9 +12,12 @@
 
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-
-const API_BASE_URL =
-  (import.meta as any).env?.VITE_CMA_API_URL ?? 'http://localhost:8000';
+import {
+  API_BASE_URL,
+  API_NOT_CONFIGURED_MESSAGE,
+  REPORT_REQUEST_TIMEOUT_MS,
+  isApiConfigured,
+} from '@/lib/apiBase';
 
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -118,11 +121,12 @@ export function useReportGenerator() {
     setReportResult(null);
 
     try {
+      if (!isApiConfigured) throw new Error(API_NOT_CONFIGURED_MESSAGE);
       const res = await fetch(`${API_BASE_URL}/api/v1/report/generate`, {
         method:  'POST',
         headers: await getAuthHeaders(),
         body:    JSON.stringify(payload),
-        signal:  AbortSignal.timeout(30000),
+        signal:  AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
       });
 
       if (!res.ok) {

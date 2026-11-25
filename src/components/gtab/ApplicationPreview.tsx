@@ -539,16 +539,26 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
             </div>
             <div>
               <p className="font-semibold text-red-900 text-sm">Report Could Not Be Generated</p>
-              <p className="text-xs text-red-700">A server error occurred. Check the API is running.</p>
+              <p className="text-xs text-red-700">
+                {import.meta.env.DEV
+                  ? "A server error occurred. Check the API is running."
+                  : "The report service could not be reached. Please try again in a minute."}
+              </p>
             </div>
           </div>
           <div className="px-5 py-3 space-y-1">
             <p className="text-sm text-red-800">{cmaError}</p>
-            <p className="text-xs text-red-500">
-              Run{' '}
-              <code className="bg-red-100 border border-red-200 px-1.5 py-0.5 rounded text-red-700 font-mono">npm run api</code>
-              {' '}in your terminal and try again.
-            </p>
+            {import.meta.env.DEV ? (
+              <p className="text-xs text-red-500">
+                Run{' '}
+                <code className="bg-red-100 border border-red-200 px-1.5 py-0.5 rounded text-red-700 font-mono">npm run api</code>
+                {' '}in your terminal and try again.
+              </p>
+            ) : (
+              <p className="text-xs text-red-500">
+                The first report after a period of inactivity can take up to a minute while the server starts.
+              </p>
+            )}
           </div>
         </div>
       )}

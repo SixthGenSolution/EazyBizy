@@ -126,8 +126,7 @@ export interface CMAApiFinancials {
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
-const API_BASE_URL =
-  (import.meta as any).env?.VITE_CMA_API_URL ?? "http://localhost:8000";
+import { API_BASE_URL } from "@/lib/apiBase";
 
 // ── Note ──────────────────────────────────────────────────────────────────────
 // fetchCMAReport uses buildDprFormStateFromGTAB (flat MasterInput) → /master/{industry}/calculate
