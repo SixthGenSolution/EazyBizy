@@ -12,6 +12,7 @@ import {
 import { getFinancingPlan, getNormalizedProjectReportInputs, getProjectReportMachineryTotal } from "@/lib/projectReport";
 import { useToast } from "@/hooks/use-toast";
 import { useReportGenerator } from "@/hooks/useReportGenerator";
+import { isApiMissingInProduction } from "@/lib/apiBase";
 import { buildCMAReportInput } from "@/lib/buildCMAReportInput";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { getMonthlyWorkingCapital } from "@/lib/workingCapital";
@@ -542,7 +543,9 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
               <p className="text-xs text-red-700">
                 {import.meta.env.DEV
                   ? "A server error occurred. Check the API is running."
-                  : "The report service could not be reached. Please try again in a minute."}
+                  : isApiMissingInProduction
+                    ? "Report generation is not available on this deployment yet."
+                    : "The report service could not be reached. Please try again in a minute."}
               </p>
             </div>
           </div>
@@ -553,6 +556,10 @@ const ApplicationPreview = ({ formData, applicationId, onSubmit, onEnsureSaved, 
                 Run{' '}
                 <code className="bg-red-100 border border-red-200 px-1.5 py-0.5 rounded text-red-700 font-mono">npm run api</code>
                 {' '}in your terminal and try again.
+              </p>
+            ) : isApiMissingInProduction ? (
+              <p className="text-xs text-red-500">
+                Site admin: set VITE_CMA_API_URL to the backend URL in Vercel and redeploy.
               </p>
             ) : (
               <p className="text-xs text-red-500">
